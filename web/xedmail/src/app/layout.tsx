@@ -9,6 +9,7 @@ import {
   SignUpButton,
   UserButton,
 } from "@clerk/nextjs";
+import { User } from "@clerk/nextjs/server";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -36,6 +37,11 @@ export default function RootLayout({
         <body
           className={`${geistSans.variable} ${geistMono.variable} antialiased`}
         >
+          <header className="flex items-center justify-between p-4">
+            <SignedIn>
+              <UserButton />
+            </SignedIn>
+          </header>
           {children}
         </body>
       </html>
