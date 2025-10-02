@@ -1,9 +1,14 @@
+"use client";
+
 import { Input } from "@/components/ui/input";
 import Image from "next/image";
+import { useRouter } from "next/navigation";
 
 const GoogleOauthUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=611007919856-g0o1ds7pf4qbh8qef9qul4ofqudp8bqk.apps.googleusercontent.com&redirect_uri=http://localhost:5172/oauth/callback&response_type=code&scope=https://mail.google.com/&access_type=offline&prompt=consent`;
 
 export default function Home() {
+  const router = useRouter();
+
   return (
     <div className="font-sans grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20">
       <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
@@ -18,6 +23,14 @@ export default function Home() {
           <Input
             placeholder="Show all my emails from today."
             className="min-w-2xl h-16 border-stone-400"
+            onSubmit={() => {
+              router.push("/inbox");
+            }}
+            onKeyPress={(e) => {
+              if (e.key === "Enter") {
+                router.push("/inbox");
+              }
+            }}
           />
         </div>
       </main>
