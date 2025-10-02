@@ -1,4 +1,3 @@
-using xedmail.Models;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -6,10 +5,6 @@ var builder = WebApplication.CreateBuilder(args);
 // Add services to the container.
 // Learn more about configuring OpenAPI at https://aka.ms/aspnet/openapi
 builder.Services.AddOpenApi();
-
-// Register DbContext
-builder.Services.AddDbContext<AppDbContext>(options =>
-    options.UseSqlite("Data Source=app.db")); // or SQL Server/Postgres/etc
 
 // At the top of Program.cs
 builder.Services.AddDistributedMemoryCache();
@@ -129,6 +124,14 @@ app.MapGet("/api/tokens", (HttpContext ctx) =>
     });
 });
 
+// API endpoint to get all emails from inbox
+app.MapGet("/api/inbox/all", () => 
+    Results.Ok(new[] 
+    {
+        new { id = "1", subject = "Hello world!", sender = "me@email.com" },
+        new { id = "2", subject = "Another email", sender = "you@email.com" }
+    })
+);
 
 app.Run();
 
