@@ -1,12 +1,19 @@
 import { Input } from "@/components/ui/input";
 import Image from "next/image";
 
+const GoogleOauthUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=611007919856-g0o1ds7pf4qbh8qef9qul4ofqudp8bqk.apps.googleusercontent.com&redirect_uri=http://localhost:5172/oauth/callback&response_type=code&scope=https://mail.google.com/&access_type=offline&prompt=consent`;
+
 export default function Home() {
   return (
     <div className="font-sans grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20">
       <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
         <div className="gap-8 items-center flex-col text-center">
-          <p className="text-5xl font-bold pb-12">Welcome Ibrahim.</p>
+          <div className="flex-row gap-y-4 pb-12">
+            <p className="text-5xl font-bold">Welcome Ibrahim.</p>
+            <div className="flex">
+              <a href={GoogleOauthUrl}>connect to gmail</a>
+            </div>
+          </div>
           {/* TODO: Add rows of quick actions like new emails, total emails, etc. */}
           <Input
             placeholder="Show all my emails from today."
