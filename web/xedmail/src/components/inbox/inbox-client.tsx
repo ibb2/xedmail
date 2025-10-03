@@ -36,7 +36,7 @@ export default function InboxClient({ emails }: { emails: any[] }) {
             </Card>
           ))}
         </ul>
-        <DialogContent className="w-full max-w-3/5! h-2/3">
+        <DialogContent className="overflow-x-auto w-full max-w-3/5! h-2/3">
           <DialogHeader>
             <DialogTitle>{selectedEmail?.subject}</DialogTitle>
             <DialogDescription>
