@@ -251,7 +251,7 @@ app.MapGet("/api/inbox/all", async (
         Subject = m.Subject ?? "(No Subject)",
         From = m.From.Mailboxes.FirstOrDefault()?.Address ?? "unknown",
         To = string.Join(", ", m.To.Mailboxes.Select(mb => mb.Address)),
-        Body = m.TextBody ?? m.HtmlBody ?? "(No Content)",
+        Body = m.HtmlBody ?? m.TextBody ?? "(No Content)",
         Date = m.Date.UtcDateTime,
         IsRead = false // You'll need to get this from IMAP flags if available
     }).ToList();

@@ -32,7 +32,7 @@ public class MailClient
         
         var uids = await Client.Inbox.SearchAsync(SearchQuery.All);
 
-        foreach (var uid in uids.TakeLast(20))
+        foreach (var uid in uids.TakeLast(20).Reverse())
         {
             var message = await Client.Inbox.GetMessageAsync(uid);
             messages.Add(message);
