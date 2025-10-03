@@ -1,3 +1,10 @@
+import {
+  Card,
+  CardContent,
+  CardDescription,
+  CardHeader,
+  CardTitle,
+} from "@/components/ui/card";
 import { currentUser } from "@clerk/nextjs/server";
 
 export default async function Inbox() {
@@ -14,13 +21,16 @@ export default async function Inbox() {
   console.log("Emails", emails);
 
   return (
-    <div className="flex-col items-center justify-center h-full w-full">
+    <div className="flex flex-col items-center justify-center h-full ">
       <p>Inbox</p>
-      <ul>
+      <ul className="flex flex-col gap-y-1 w-2/3 max-w-2xl">
         {emails.map((email) => (
-          <li key={email.id}>
-            {email.from} - {email.subject}
-          </li>
+          <Card key={email.id} className="">
+            <CardHeader>
+              <CardTitle>{email.from}</CardTitle>
+              <CardDescription>{email.subject}</CardDescription>
+            </CardHeader>
+          </Card>
         ))}
       </ul>
     </div>
