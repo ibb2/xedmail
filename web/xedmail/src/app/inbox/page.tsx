@@ -1,3 +1,4 @@
+import InboxClient from "@/components/inbox/inbox-client";
 import {
   Card,
   CardContent,
@@ -5,7 +6,16 @@ import {
   CardHeader,
   CardTitle,
 } from "@/components/ui/card";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogHeader,
+  DialogTitle,
+  DialogTrigger,
+} from "@/components/ui/dialog";
 import { currentUser } from "@clerk/nextjs/server";
+import React from "react";
 
 export default async function Inbox() {
   const user = await currentUser();
@@ -20,19 +30,5 @@ export default async function Inbox() {
   const emails = await data.json();
   console.log("Emails", emails);
 
-  return (
-    <div className="flex flex-col items-center justify-center h-full ">
-      <p>Inbox</p>
-      <ul className="flex flex-col gap-y-1 w-2/3 max-w-2xl">
-        {emails.map((email) => (
-          <Card key={email.id} className="">
-            <CardHeader>
-              <CardTitle>{email.from}</CardTitle>
-              <CardDescription>{email.subject}</CardDescription>
-            </CardHeader>
-          </Card>
-        ))}
-      </ul>
-    </div>
-  );
+  return <InboxClient emails={emails} />;
 }
