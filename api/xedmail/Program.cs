@@ -211,6 +211,29 @@ app.MapGet("/api/inbox/all", async (
     if (userToken.ExpiresAt <= DateTime.UtcNow)
     {
         logger.LogWarning("Access token expired for {Email}", email);
+        
+        using var http = new HttpClient();
+        
+        var data = new Dictionary<string, string>
+        {
+            ["refresh_token"] = userToken.RefreshToken!,
+            ["client_id"] = builder.Configuration["Google:ClientId"]!,
+            ["client_secret"] = builder.Configuration["Google:ClientSecret"]!,
+            ["grant_type"] = "refresh_token"
+        };
+
+        var accessTokenData = await http.PostAsync("https://oauth2.googleapis.com/token", new FormUrlEncodedContent(data));
+        var refreshedAccessToken = await accessTokenData.Content.ReadFromJsonAsync<Dictionary<string, object>>();
+        
+        if (refreshedAccessToken == null)
+            return Results.Problem("Failed to refresh access token");
+        
+        logger.LogInformation("Refreshed access token for {Email}, {refreshedAccessToken}", email, refreshedAccessToken);
+        userToken.AccessToken = refreshedAccessToken["access_token"].ToString()!;
+        userToken.ExpiresAt = DateTime.UtcNow.AddSeconds(int.Parse(refreshedAccessToken["expires_in"].ToString()!));
+        userToken.UpdatedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync();
+        
         return Results.Problem("Access token expired. Please re-authenticate.");
     }
     
