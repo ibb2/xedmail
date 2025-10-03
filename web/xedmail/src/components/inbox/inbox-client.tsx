@@ -1,6 +1,7 @@
 // src/app/inbox/InboxClient.tsx (Client Component)
 "use client";
 
+import React, { useState } from "react";
 import {
   Card,
   CardDescription,
@@ -15,10 +16,16 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
-import React, { useState } from "react";
+import DOMPurify from "dompurify";
 
 export default function InboxClient({ emails }: { emails: any[] }) {
   const [selectedEmail, setSelectedEmail] = useState<any>(null);
+
+  const clean = () => {
+    if (!selectedEmail) return "";
+    return DOMPurify.sanitize(selectedEmail.body);
+  };
+  const htmlEmailBody = { __html: clean() };
 
   return (
     <div className="flex flex-col items-center justify-center h-full">
@@ -42,7 +49,8 @@ export default function InboxClient({ emails }: { emails: any[] }) {
             <DialogDescription>
               {selectedEmail?.from} - {selectedEmail?.date}
             </DialogDescription>
-            <p className="max-w-3/5 wrap-break-word">{selectedEmail?.body}</p>
+            {/** biome-ignore lint/security/noDangerouslySetInnerHtml: <explanation> */}
+            <div dangerouslySetInnerHTML={htmlEmailBody}></div>
           </DialogHeader>
         </DialogContent>
       </Dialog>
