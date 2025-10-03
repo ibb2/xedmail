@@ -4,7 +4,17 @@ import { Input } from "@/components/ui/input";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 
-const GoogleOauthUrl = `https://accounts.google.com/o/oauth2/v2/auth?client_id=611007919856-g0o1ds7pf4qbh8qef9qul4ofqudp8bqk.apps.googleusercontent.com&redirect_uri=http://localhost:5172/oauth/callback&response_type=code&scope=https://mail.google.com/&access_type=offline&prompt=consent`;
+const params = new URLSearchParams({
+  client_id:
+    "611007919856-g0o1ds7pf4qbh8qef9qul4ofqudp8bqk.apps.googleusercontent.com",
+  redirect_uri: "http://localhost:5172/oauth/callback",
+  response_type: "code",
+  scope: "openid https://mail.google.com/ profile email",
+  access_type: "offline",
+  prompt: "consent",
+});
+
+const GoogleOauthUrl = `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
 
 export default function Home() {
   const router = useRouter();
