@@ -17,18 +17,25 @@ import {
 import { currentUser } from "@clerk/nextjs/server";
 import React from "react";
 
-export default async function Inbox() {
+export default async function Inbox({
+  query,
+  searchParams,
+}: {
+  query: string;
+  searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
+}) {
   const user = await currentUser();
 
+  const filters = (await searchParams).q;
+  console.log("Filters:", filters);
+
   const data = await fetch(
-    `http://localhost:5172/api/inbox/all?email=${user?.emailAddresses?.[0]?.emailAddress}`,
+    `http://localhost:5172/api/search?email=${user?.emailAddresses?.[0]?.emailAddress}&query=${filters}`,
     {
       credentials: "include", // Critical!
     },
   );
-  console.log(data);
   const emails = await data.json();
-  console.log("Emails", emails);
 
   return <InboxClient emails={emails} />;
 }

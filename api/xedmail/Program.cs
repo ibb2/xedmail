@@ -1,7 +1,12 @@
 using System.Text;
+using MailKit;
+using MailKit.Net.Imap;
+using MailKit.Search;
+using MailKit.Security;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.EntityFrameworkCore;
+using Newtonsoft.Json.Linq;
 using xedmail.Mail;
 using xedmail.Model;
 
@@ -257,6 +262,119 @@ app.MapGet("/api/inbox/all", async (
     }).ToList();
     
     return Results.Ok(emailDtos);
+});
+
+app.MapGet("/api/search", async (HttpContext ctx, ILogger<Program> logger, AppDbContext db, string email, string query) =>
+{
+    
+    logger.LogInformation("Searching for {Query} from {Email}", query, email);
+    
+    using var http = new HttpClient();
+
+    // Database
+    var userToken = await db.UserTokens.FirstOrDefaultAsync(t => t.Email == email);
+    
+    if (userToken == null)
+    {
+        logger.LogWarning("No token found for {Email}", email);
+        return Results.NotFound("User not authenticated with Google");
+    }
+    
+    // Check if token is expired
+    if (userToken.ExpiresAt <= DateTime.UtcNow)
+    {
+        logger.LogWarning("Access token expired for {Email}", email);
+        
+        var data = new Dictionary<string, string>
+        {
+            ["refresh_token"] = userToken.RefreshToken!,
+            ["client_id"] = builder.Configuration["Google:ClientId"]!,
+            ["client_secret"] = builder.Configuration["Google:ClientSecret"]!,
+            ["grant_type"] = "refresh_token"
+        };
+
+        var accessTokenData = await http.PostAsync("https://oauth2.googleapis.com/token", new FormUrlEncodedContent(data));
+        var refreshedAccessToken = await accessTokenData.Content.ReadFromJsonAsync<Dictionary<string, object>>();
+        
+        if (refreshedAccessToken == null)
+            return Results.Problem("Failed to refresh access token");
+        
+        logger.LogInformation("Refreshed access token for {Email}, {refreshedAccessToken}", email, refreshedAccessToken);
+        userToken.AccessToken = refreshedAccessToken["access_token"].ToString()!;
+        userToken.ExpiresAt = DateTime.UtcNow.AddSeconds(int.Parse(refreshedAccessToken["expires_in"].ToString()!));
+        userToken.UpdatedAt = DateTime.UtcNow;
+        await db.SaveChangesAsync();
+        
+        return Results.Problem("Access token expired. Please re-authenticate.");
+    }
+    
+    //OAuth
+    Console.WriteLine("Connecting to Gmail IMAP server");
+    Console.WriteLine($"Email: {email}");
+    
+    var oauth2 = new SaslMechanismOAuthBearer(email, userToken.AccessToken);
+    
+    using var client = new ImapClient();
+
+    await client.ConnectAsync("imap.gmail.com", 993, SecureSocketOptions.SslOnConnect);
+    await client.AuthenticateAsync(oauth2);
+    
+    var inbox = client.Inbox;
+    await inbox.OpenAsync(FolderAccess.ReadOnly);
+    
+    logger.LogInformation("Connected to Gmail IMAP server");
+    logger.LogInformation("Parsing search query");
+
+    var results = await http.PostAsJsonAsync("http://127.0.0.1:8000/parse", new {query} );
+    var json = await results.Content.ReadAsStringAsync();
+    
+    logger.LogInformation("Parsed search query & Got search results: {Results}", json);
+    
+    var parsed = JObject.Parse(json);  
+    var filters = parsed["filters"];
+    
+    SearchQuery search = SearchQuery.All;
+
+    // Apply status filter
+    if (filters?["status"]?.ToString() == "unread")
+        search.And(SearchQuery.NotSeen);
+    else if (filters?["status"]?.ToString() == "read")
+        search.And(SearchQuery.Seen);
+
+    // Apply date filter
+    var today = DateTime.UtcNow.Date;
+    if (filters?["date"]?.ToString() == "today")
+        search = search.And(SearchQuery.DeliveredOn(today));
+    else if (filters?["date"]?.ToString() == "yesterday")
+        search = search.And(SearchQuery.DeliveredOn(today.AddDays(-1)));
+
+    // Apply sender filter
+    if (filters?["from"] != null)
+    {
+        var sender = filters["from"]!.ToString();
+        search = search.And(SearchQuery.FromContains(sender));
+    }
+    
+    var searchResults = await inbox.SearchAsync(search);
+    var trimmedSearchResults = searchResults.TakeLast(10).Reverse();
+    var messages = trimmedSearchResults.Select(x => inbox.GetMessage(x)).ToList();
+    
+    logger.LogInformation("Got {Count} messages", messages.Count);
+    
+    var emailDto = messages.Select(m => new EmailDto{
+        Id = m.MessageId ?? Guid.NewGuid().ToString(),
+        Subject = m.Subject ?? "(No Subject)",
+        From = m.From.Mailboxes.FirstOrDefault()?.Address ?? "unknown",
+        To = string.Join(", ", m.To.Mailboxes.Select(mb => mb.Address)),
+        Body = m.HtmlBody ?? m.TextBody ?? "(No Content)",
+        Date = m.Date.UtcDateTime,
+        IsRead = false});
+
+    await client.DisconnectAsync(true);
+    
+    // logger.LogInformation("Got search results: {Results}", json);
+    
+    return Results.Ok(emailDto);
 });
 
 app.Run();
