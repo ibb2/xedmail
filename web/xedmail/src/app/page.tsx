@@ -22,8 +22,8 @@ export default function Home() {
 
   return (
     <div className="font-sans grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <div className="gap-8 items-center flex-col text-center">
+      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start min-w-full">
+        <div className="items-center flex flex-col text-center min-w-full">
           <div className="flex-row gap-y-4 pb-12">
             <p className="text-5xl font-bold">Welcome Ibrahim.</p>
             <div className="flex">
