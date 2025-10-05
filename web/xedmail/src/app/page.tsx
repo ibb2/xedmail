@@ -1,5 +1,6 @@
 "use client";
 
+import SearchBar from "@/components/search/Search";
 import { Input } from "@/components/ui/input";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
@@ -21,8 +22,8 @@ export default function Home() {
 
   return (
     <div className="font-sans grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20">
-      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start">
-        <div className="gap-8 items-center flex-col text-center">
+      <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start min-w-full">
+        <div className="items-center flex flex-col text-center min-w-full">
           <div className="flex-row gap-y-4 pb-12">
             <p className="text-5xl font-bold">Welcome Ibrahim.</p>
             <div className="flex">
@@ -30,18 +31,7 @@ export default function Home() {
             </div>
           </div>
           {/* TODO: Add rows of quick actions like new emails, total emails, etc. */}
-          <Input
-            placeholder="Show all my emails from today."
-            className="min-w-2xl h-16 border-stone-400"
-            onSubmit={() => {
-              router.push("/inbox");
-            }}
-            onKeyPress={(e) => {
-              if (e.key === "Enter") {
-                router.push("/inbox");
-              }
-            }}
-          />
+          <SearchBar />
         </div>
       </main>
       <footer className="row-start-3 flex gap-[24px] flex-wrap items-center justify-center">
