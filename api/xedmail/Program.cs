@@ -356,19 +356,21 @@ app.MapGet("/api/search", async (HttpContext ctx, ILogger<Program> logger, AppDb
     }
     
     var searchResults = await inbox.SearchAsync(search);
-    var trimmedSearchResults = searchResults.TakeLast(10).Reverse();
+    var infoRaw = await inbox.FetchAsync(searchResults, MessageSummaryItems.Full | MessageSummaryItems.UniqueId);
+    var info = infoRaw.Reverse().ToList();
+    var trimmedSearchResults = searchResults.TakeLast(20).Reverse();
     var messages = trimmedSearchResults.Select(x => inbox.GetMessage(x)).ToList();
     
     logger.LogInformation("Got {Count} messages", messages.Count);
     
-    var emailDto = messages.Select(m => new EmailDto{
+    var emailDto = messages.Select((m, index) => new EmailDto{
         Id = m.MessageId ?? Guid.NewGuid().ToString(),
         Subject = m.Subject ?? "(No Subject)",
         From = m.From.Mailboxes.FirstOrDefault()?.Address ?? "unknown",
         To = string.Join(", ", m.To.Mailboxes.Select(mb => mb.Address)),
         Body = m.HtmlBody ?? m.TextBody ?? "(No Content)",
         Date = m.Date.UtcDateTime,
-        IsRead = false});
+        IsRead = info[index].Flags!.Value.HasFlag(MessageFlags.Seen)});
 
     await client.DisconnectAsync(true);
     

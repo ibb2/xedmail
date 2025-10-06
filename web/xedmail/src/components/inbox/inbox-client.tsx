@@ -4,6 +4,7 @@
 import React, { useState } from "react";
 import {
   Card,
+  CardAction,
   CardDescription,
   CardHeader,
   CardTitle,
@@ -17,15 +18,27 @@ import {
   DialogTrigger,
 } from "@/components/ui/dialog";
 import DOMPurify from "dompurify";
+import { Button } from "../ui/button";
+import { Mail, MailOpen } from "lucide-react";
 
 export default function InboxClient({ emails }: { emails: any[] }) {
-  const [selectedEmail, setSelectedEmail] = useState<any>(null);
+  const [selectedEmail, setSelectedEmail] = React.useState<any>(null);
 
   const clean = () => {
     if (!selectedEmail) return "";
     return DOMPurify.sanitize(selectedEmail.body);
   };
   const htmlEmailBody = { __html: clean() };
+
+  console.log("First read email ", emails[15]);
+
+  const toggleRead = (read: Boolean) => {
+    if (!selectedEmail) return;
+
+    if (read) {
+      fetch("");
+    }
+  };
 
   return (
     <div className="flex flex-col items-center justify-center h-full">
@@ -38,6 +51,17 @@ export default function InboxClient({ emails }: { emails: any[] }) {
                 <CardHeader>
                   <CardTitle>{email.from}</CardTitle>
                   <CardDescription>{email.subject}</CardDescription>
+                  <CardAction>
+                    {email.isRead ? (
+                      <Button size="icon">
+                        <MailOpen></MailOpen>
+                      </Button>
+                    ) : (
+                      <Button size="icon">
+                        <Mail></Mail>
+                      </Button>
+                    )}
+                  </CardAction>
                 </CardHeader>
               </DialogTrigger>
             </Card>
