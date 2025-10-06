@@ -1,7 +1,7 @@
 // src/app/inbox/InboxClient.tsx (Client Component)
 "use client";
 
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import {
   Card,
   CardAction,
@@ -24,19 +24,47 @@ import { Mail, MailOpen } from "lucide-react";
 export default function InboxClient({ emails }: { emails: any[] }) {
   const [selectedEmail, setSelectedEmail] = React.useState<any>(null);
 
+  // Use local state so updates cause a re-render
+  const [localEmails, setLocalEmails] = useState(emails);
+
+  // Keep local state in sync if parent prop changes
+  useEffect(() => {
+    setLocalEmails(emails);
+  }, [emails]);
+
+  console.log(localEmails);
+
   const clean = () => {
     if (!selectedEmail) return "";
     return DOMPurify.sanitize(selectedEmail.body);
   };
   const htmlEmailBody = { __html: clean() };
 
-  console.log("First read email ", emails[15]);
+  // Accept the email to toggle and stop event propagation from the button
+  const toggleRead = (email: any) => {
+    if (!email) return;
 
-  const toggleRead = (read: Boolean) => {
-    if (!selectedEmail) return;
+    // Optionally send PATCH to server here...
+    fetch(
+      `http://localhost:5172/api/emails/${email.uid}?email=${email.to}&isRead=${email.isRead}`,
+      {
+        method: "PATCH",
+        headers: {
+          "Content-Type": "application/json",
+        },
+      },
+    );
 
-    if (read) {
-      fetch("");
+    const updatedEmail = { ...email, isRead: !email.isRead };
+
+    // Update the local array (immutable update)
+    setLocalEmails((prev) =>
+      prev.map((e) => (e.id === email.id ? updatedEmail : e)),
+    );
+
+    // Also update selectedEmail if it's the same one currently open
+    if (selectedEmail?.id === email.id) {
+      setSelectedEmail(updatedEmail);
     }
   };
 
@@ -45,25 +73,38 @@ export default function InboxClient({ emails }: { emails: any[] }) {
       <p>Inbox</p>
       <Dialog>
         <ul className="flex flex-col gap-y-1 w-2/3 max-w-2xl">
-          {emails.map((email) => (
+          {localEmails.map((email) => (
             <Card key={email.id} onClick={() => setSelectedEmail(email)}>
-              <DialogTrigger asChild>
-                <CardHeader>
+              <CardHeader>
+                <DialogTrigger>
                   <CardTitle>{email.from}</CardTitle>
-                  <CardDescription>{email.subject}</CardDescription>
-                  <CardAction>
-                    {email.isRead ? (
-                      <Button size="icon">
-                        <MailOpen></MailOpen>
-                      </Button>
-                    ) : (
-                      <Button size="icon">
-                        <Mail></Mail>
-                      </Button>
-                    )}
-                  </CardAction>
-                </CardHeader>
-              </DialogTrigger>
+                </DialogTrigger>
+                <CardDescription>{email.subject}</CardDescription>
+                <CardAction>
+                  {email.isRead && (
+                    <Button
+                      size="icon"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggleRead(email);
+                      }}
+                    >
+                      <MailOpen />
+                    </Button>
+                  )}
+                  {email.isRead === false && (
+                    <Button
+                      size="icon"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggleRead(email);
+                      }}
+                    >
+                      <Mail />
+                    </Button>
+                  )}
+                </CardAction>
+              </CardHeader>
             </Card>
           ))}
         </ul>
