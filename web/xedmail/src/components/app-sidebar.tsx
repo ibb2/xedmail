@@ -4,6 +4,7 @@ import { GalleryVerticalEnd } from "lucide-react";
 import {
   Sidebar,
   SidebarContent,
+  SidebarFooter,
   SidebarGroup,
   SidebarHeader,
   SidebarMenu,
@@ -13,6 +14,8 @@ import {
   SidebarMenuSubButton,
   SidebarMenuSubItem,
 } from "@/components/ui/sidebar";
+import { NavUser } from "./nav-user";
+import { currentUser } from "@clerk/nextjs/server";
 
 // This is sample data.
 const data = {
@@ -155,7 +158,11 @@ const data = {
   ],
 };
 
-export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
+export async function AppSidebar({
+  ...props
+}: React.ComponentProps<typeof Sidebar>) {
+  const userData = await currentUser();
+
   return (
     <Sidebar variant="floating" collapsible="icon" {...props}>
       <SidebarHeader>
@@ -176,7 +183,7 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
         </SidebarMenu>
       </SidebarHeader>
       <SidebarContent>
-        <SidebarGroup>
+        {/*<SidebarGroup>
           <SidebarMenu className="gap-2">
             {data.navMain.map((item) => (
               <SidebarMenuItem key={item.title}>
@@ -199,8 +206,17 @@ export function AppSidebar({ ...props }: React.ComponentProps<typeof Sidebar>) {
               </SidebarMenuItem>
             ))}
           </SidebarMenu>
-        </SidebarGroup>
+        </SidebarGroup>*/}
       </SidebarContent>
+      <SidebarFooter>
+        <NavUser
+          user={{
+            name: userData?.username ?? "shadcn",
+            email: userData?.emailAddresses[0].emailAddress ?? "m@example.com",
+            avatar: userData?.imageUrl ?? "/avatars/shadcn.jpg",
+          }}
+        />
+      </SidebarFooter>
     </Sidebar>
   );
 }
