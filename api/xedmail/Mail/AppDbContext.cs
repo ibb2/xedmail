@@ -10,4 +10,6 @@ public class AppDbContext : DbContext
     }
 
     public DbSet<UserToken> UserTokens { get; set; }
+    public DbSet<UserProfile> UserProfiles { get; set; }
+    public DbSet<Mailbox> Mailboxes { get; set; }
 };
