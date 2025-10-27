@@ -1,4 +1,6 @@
+using System.Collections.Concurrent;
 using System.Text;
+using Clerk.BackendAPI;
 using MailKit;
 using MailKit.Net.Imap;
 using MailKit.Search;
@@ -7,6 +9,7 @@ using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.EntityFrameworkCore;
 using Newtonsoft.Json.Linq;
+using xedmail.Authentication;
 using xedmail.Mail;
 using xedmail.Model;
 
@@ -56,6 +59,53 @@ var summaries = new[]
 
 app.MapGet("/", () => "Hello world!");
 
+ConcurrentDictionary<string, OAuthStateEntry> _stateStore = new();
+
+app.MapGet("/oauth/start", async (HttpRequest req, ILogger<Program> logger) =>
+{
+    logger.LogInformation("Starting OAuth flow");
+    logger.LogInformation("Request headers: {Headers}", req.Headers);
+    var bearerToken = req.Headers.Authorization.ToString();
+    logger.LogInformation("Bearer token: {Token}", bearerToken!);
+
+    // Connect to Clerk SDK
+    var sdk = new ClerkBackendApi(bearerAuth: bearerToken);
+    var userAuth = new UserAuthentication();
+    var data = await userAuth.ValidateSessionAsync(req);
+
+    logger.LogInformation("User session data: user id {userid}, session id {sessionid}, ", data.UserId, data.SessionId);
+
+    // Create and set in state
+    var state = Path.GetRandomFileName();
+
+    _stateStore[state] = new OAuthStateEntry()
+    {
+        State = state,
+        ClerkUserId = data.UserId,
+        Provider = "Gmail",
+        Timestamp = DateTime.UtcNow
+    };
+
+    var urlParams = new Dictionary<string, string>()
+    {
+        ["client_id"] =
+            "611007919856-g0o1ds7pf4qbh8qef9qul4ofqudp8bqk.apps.googleusercontent.com",
+        ["redirect_uri"] = "http://localhost:5172/oauth/callback",
+        ["response_type"] = "code",
+        ["scope"] = "openid https://mail.google.com/ profile email",
+        ["access_type"] = "offline",
+        ["prompt"] = "consent",
+        ["state"] = state,
+    };
+    
+    string queryString = string.Join("&", urlParams
+        .Select(kvp => $"{Uri.EscapeDataString(kvp.Key)}={Uri.EscapeDataString(kvp.Value)}"));
+
+    var authUrl = $"https://accounts.google.com/o/oauth2/v2/auth?{queryString}";
+    
+    return Results.Ok(new {authUrl});
+});
+
 app.MapGet("/weatherforecast", () =>
     {
         var forecast = Enumerable.Range(1, 5).Select(index =>
@@ -70,12 +120,132 @@ app.MapGet("/weatherforecast", () =>
     })
     .WithName("GetWeatherForecast");
 
-app.MapGet("/oauth/callback", async (
-    HttpContext ctx, 
-    ILogger<Program> logger,
-    AppDbContext db) =>
+// app.MapGet("/oauth/callback", async (
+//     HttpContext ctx, 
+//     ILogger<Program> logger,
+//     AppDbContext db) =>
+// {
+//     var code = ctx.Request.Query["code"].ToString();
+//     if (string.IsNullOrEmpty(code))
+//     {
+//         logger.LogWarning("OAuth callback received without authorization code");
+//         return Results.BadRequest("Missing code");
+//     }
+//     
+//     using var http = new HttpClient();
+//     
+//     var data = new Dictionary<string, string>
+//     {
+//         ["code"] = code,
+//         ["client_id"] = builder.Configuration["Google:ClientId"]!,
+//         ["client_secret"] = builder.Configuration["Google:ClientSecret"]!,
+//         ["redirect_uri"] = builder.Configuration["Google:RedirectUri"]!, 
+//         ["grant_type"] = "authorization_code"
+//     };
+//     
+//     logger.LogInformation("Exchanging authorization code for tokens");
+//     
+//     var tokenResponse = await http.PostAsync(
+//         "https://oauth2.googleapis.com/token",
+//         new FormUrlEncodedContent(data));
+//     
+//     if (!tokenResponse.IsSuccessStatusCode)
+//     {
+//         var errorContent = await tokenResponse.Content.ReadAsStringAsync();
+//         logger.LogError("Token exchange failed. Status: {StatusCode}, Response: {Response}", 
+//             tokenResponse.StatusCode, errorContent);
+//         return Results.Problem("Failed to exchange authorization code");
+//     }
+//     
+//     var json = await tokenResponse.Content.ReadFromJsonAsync<Dictionary<string, object>>();
+//     
+//     if (json == null)
+//     {
+//         logger.LogError("Failed to deserialize token response");
+//         return Results.Problem("Invalid token response");
+//     }
+//     
+//     // Get user info
+//     var userInfoResponse = await http.GetAsync(
+//         $"https://www.googleapis.com/oauth2/v3/userinfo?access_token={json["access_token"]}");
+//     var userInfoJson = await userInfoResponse.Content.ReadFromJsonAsync<Dictionary<string, object>>();
+//     
+//     var userEmail = userInfoJson?["email"]?.ToString();
+//     if (string.IsNullOrEmpty(userEmail))
+//     {
+//         logger.LogError("Failed to get user email");
+//         return Results.Problem("Failed to get user information");
+//     }
+//     
+//     logger.LogInformation("Successfully obtained OAuth tokens for {Email}", userEmail);
+//     
+//     // Calculate expiry
+//     var expiresIn = int.Parse(json["expires_in"].ToString()!);
+//     var expiresAt = DateTime.UtcNow.AddSeconds(expiresIn);
+//     
+//     // Check if user already exists
+//     var existingToken = await db.UserTokens.FirstOrDefaultAsync(t => t.Email == userEmail);
+//     
+//     if (existingToken != null)
+//     {
+//         // Update existing
+//         existingToken.AccessToken = json["access_token"].ToString()!;
+//         existingToken.ExpiresAt = expiresAt;
+//         existingToken.UpdatedAt = DateTime.UtcNow;
+//         
+//         if (json.ContainsKey("refresh_token"))
+//         {
+//             existingToken.RefreshToken = json["refresh_token"].ToString();
+//         }
+//         
+//         logger.LogInformation("Updated existing tokens for {Email}", userEmail);
+//     }
+//     else
+//     {
+//         // Create new
+//         var newToken = new UserToken
+//         {
+//             UserId = userEmail, // Use email as user ID for now
+//             Email = userEmail,
+//             AccessToken = json["access_token"].ToString()!,
+//             RefreshToken = json.ContainsKey("refresh_token") ? json["refresh_token"].ToString() : null,
+//             ExpiresAt = expiresAt
+//         };
+//         
+//         db.UserTokens.Add(newToken);
+//         logger.LogInformation("Created new token record for {Email}", userEmail);
+//     }
+//     
+//     await db.SaveChangesAsync();
+//     
+//     // Redirect back to Next.js with user email
+//     var nextJsUrl = builder.Configuration["NextJs:BaseUrl"];
+//     return Results.Redirect($"{nextJsUrl}/auth/callback?email={Uri.EscapeDataString(userEmail)}");
+// });
+
+app.MapGet("/oauth/callback", async (HttpRequest req, ILogger<Program> logger, AppDbContext db) =>
 {
-    var code = ctx.Request.Query["code"].ToString();
+    // 1) Validate 'state' stored in session or DB (CSRF)
+    // 2) Validate Clerk session from Authorization header / cookie -> get clerkUserId
+    var userAuth = new UserAuthentication(); 
+    // var data = await userAuth.ValidateSessionAsync(req);
+    // var clerkUserId = data.UserId; 
+
+    var q = req.Query;
+    string state = q["state"];
+    string code = q["code"];
+    if (string.IsNullOrEmpty(state) || string.IsNullOrEmpty(code))
+        return Results.BadRequest("Missing state or code");
+
+    if (!_stateStore.TryRemove(state, out var entry))
+        return Results.BadRequest("Invalid or expired state");
+
+    // optional: check entry.CreatedAt not too old
+
+    string clerkUserId = entry.ClerkUserId;
+    string provider = entry.Provider;
+    
+    // 3) Exchange code for tokens with provider
     if (string.IsNullOrEmpty(code))
     {
         logger.LogWarning("OAuth callback received without authorization code");
@@ -84,7 +254,7 @@ app.MapGet("/oauth/callback", async (
     
     using var http = new HttpClient();
     
-    var data = new Dictionary<string, string>
+    var postData = new Dictionary<string, string>
     {
         ["code"] = code,
         ["client_id"] = builder.Configuration["Google:ClientId"]!,
@@ -95,84 +265,89 @@ app.MapGet("/oauth/callback", async (
     
     logger.LogInformation("Exchanging authorization code for tokens");
     
-    var tokenResponse = await http.PostAsync(
+    var json = await http.PostAsync(
         "https://oauth2.googleapis.com/token",
-        new FormUrlEncodedContent(data));
+        new FormUrlEncodedContent(postData));
     
-    if (!tokenResponse.IsSuccessStatusCode)
+    if (!json.IsSuccessStatusCode)
     {
-        var errorContent = await tokenResponse.Content.ReadAsStringAsync();
+        var errorContent = await json.Content.ReadAsStringAsync();
         logger.LogError("Token exchange failed. Status: {StatusCode}, Response: {Response}", 
-            tokenResponse.StatusCode, errorContent);
+            json.StatusCode, errorContent);
         return Results.Problem("Failed to exchange authorization code");
     }
     
-    var json = await tokenResponse.Content.ReadFromJsonAsync<Dictionary<string, object>>();
+    var tokenResponse = await json.Content.ReadFromJsonAsync<Dictionary<string, object>>();
     
-    if (json == null)
+    if (tokenResponse == null)
     {
         logger.LogError("Failed to deserialize token response");
         return Results.Problem("Invalid token response");
     }
     
+    // 4) Get the user's email from token / userinfo endpoint if possible
     // Get user info
     var userInfoResponse = await http.GetAsync(
-        $"https://www.googleapis.com/oauth2/v3/userinfo?access_token={json["access_token"]}");
+        $"https://www.googleapis.com/oauth2/v3/userinfo?access_token={tokenResponse["access_token"]}");
     var userInfoJson = await userInfoResponse.Content.ReadFromJsonAsync<Dictionary<string, object>>();
     
-    var userEmail = userInfoJson?["email"]?.ToString();
-    if (string.IsNullOrEmpty(userEmail))
+    var email = userInfoJson?["email"]?.ToString();
+    if (string.IsNullOrEmpty(email))
     {
         logger.LogError("Failed to get user email");
         return Results.Problem("Failed to get user information");
     }
     
-    logger.LogInformation("Successfully obtained OAuth tokens for {Email}", userEmail);
+    logger.LogInformation("Successfully obtained OAuth tokens for {Email}", email);
     
     // Calculate expiry
-    var expiresIn = int.Parse(json["expires_in"].ToString()!);
+    var expiresIn = int.Parse(tokenResponse["expires_in"].ToString()!);
     var expiresAt = DateTime.UtcNow.AddSeconds(expiresIn);
-    
-    // Check if user already exists
-    var existingToken = await db.UserTokens.FirstOrDefaultAsync(t => t.Email == userEmail);
-    
-    if (existingToken != null)
-    {
-        // Update existing
-        existingToken.AccessToken = json["access_token"].ToString()!;
-        existingToken.ExpiresAt = expiresAt;
-        existingToken.UpdatedAt = DateTime.UtcNow;
-        
-        if (json.ContainsKey("refresh_token"))
-        {
-            existingToken.RefreshToken = json["refresh_token"].ToString();
-        }
-        
-        logger.LogInformation("Updated existing tokens for {Email}", userEmail);
-    }
-    else
-    {
-        // Create new
-        var newToken = new UserToken
-        {
-            UserId = userEmail, // Use email as user ID for now
-            Email = userEmail,
-            AccessToken = json["access_token"].ToString()!,
-            RefreshToken = json.ContainsKey("refresh_token") ? json["refresh_token"].ToString() : null,
-            ExpiresAt = expiresAt
-        };
-        
-        db.UserTokens.Add(newToken);
-        logger.LogInformation("Created new token record for {Email}", userEmail);
-    }
-    
-    await db.SaveChangesAsync();
-    
-    // Redirect back to Next.js with user email
-    var nextJsUrl = builder.Configuration["NextJs:BaseUrl"];
-    return Results.Redirect($"{nextJsUrl}/auth/callback?email={Uri.EscapeDataString(userEmail)}");
-});
+    logger.LogInformation("Token expiry: {ExpiresAt}", expiresAt);
 
+    // 5) Create or update UserProfile / Mailbox
+    // Check if user already exists
+// Check if user already exists
+    var profile = await db.UserProfiles
+        .Include(p => p.Mailboxes) // IMPORTANT: Load mailboxes
+        .FirstOrDefaultAsync(p => p.ClerkUserId == clerkUserId);
+
+    bool isNewProfile = false;
+    if (profile == null)
+    {
+        profile = new UserProfile { ClerkUserId = clerkUserId };
+        db.UserProfiles.Add(profile); // Use Add() for new entities
+        isNewProfile = true;
+    }
+
+    var mailbox = profile.Mailboxes.FirstOrDefault(m => m.EmailAddress == email && m.Provider == provider);
+
+    bool isNewMailbox = false;
+    if (mailbox == null)
+    {
+        mailbox = new Mailbox 
+        { 
+            Id = Guid.NewGuid(), 
+            Provider = provider, 
+            EmailAddress = email 
+        };
+        profile.Mailboxes.Add(mailbox);
+        isNewMailbox = true;
+    }
+
+    mailbox.EncryptedAccessToken = tokenResponse["access_token"].ToString();
+    mailbox.EncryptedRefreshToken = tokenResponse["refresh_token"]?.ToString();
+    mailbox.AccessTokenExpiresAt = expiresAt;
+    mailbox.Scopes = string.Join(" ", tokenResponse["scope"] ?? Enumerable.Empty<string>());
+    mailbox.LastSyncAt = null;
+    await db.SaveChangesAsync();
+
+    // 6) Redirect to the frontend success page
+    var nextJsUrl = builder.Configuration["NextJs:BaseUrl"];
+    // res.Redirect($"{nextJsUrl}/auth/callback?email={Uri.EscapeDataString(email)}");
+
+    return Results.Redirect($"{nextJsUrl}");
+});
 
 // API endpoint to get tokens
 app.MapGet("/api/tokens", (HttpContext ctx) =>
@@ -195,7 +370,7 @@ app.MapGet("/api/inbox/all", async (
     ILogger<Program> logger,
     AppDbContext db,
     string email
-    ) =>
+) =>
 {
     logger.LogInformation("Connecting {Email}'s inbox", email);
     if (string.IsNullOrEmpty(email))
@@ -452,6 +627,14 @@ app.Run();
 record WeatherForecast(DateOnly Date, int TemperatureC, string? Summary)
 {
     public int TemperatureF => 32 + (int)(TemperatureC / 0.5556);
+}
+
+public partial record OAuthStateEntry
+{
+    public string State { get; set; }
+    public string ClerkUserId { get; set; }
+    public string Provider { get; set; }
+    public DateTime Timestamp { get; set; }
 }
 
 // Add this class to your Program.cs

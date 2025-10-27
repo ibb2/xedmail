@@ -1,7 +1,9 @@
 "use client";
 
 import SearchBar from "@/components/search/Search";
+import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { useAuth } from "@clerk/nextjs";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 
@@ -20,6 +22,26 @@ const GoogleOauthUrl = `https://accounts.google.com/o/oauth2/v2/auth?${params.to
 export default function Home() {
   const router = useRouter();
 
+  const { getToken } = useAuth();
+
+  const beginOauthFlow = async () => {
+    const token = await getToken();
+
+    fetch("http://localhost:5172/oauth/start", {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    }).then(async (response) => {
+      if (!response.ok) {
+        console.error("Failed to start OAuth flow");
+      }
+
+      const data = await response.json();
+      console.log("Data :", data["authUrl"]);
+      router.push(data["authUrl"]);
+    });
+  };
+
   return (
     <div className="font-sans grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20">
       <main className="flex flex-col gap-[32px] row-start-2 items-center sm:items-start min-w-full">
@@ -27,7 +49,7 @@ export default function Home() {
           <div className="flex-row gap-y-4 pb-12">
             <p className="text-5xl font-bold">Welcome Ibrahim.</p>
             <div className="flex">
-              <a href={GoogleOauthUrl}>connect to gmail</a>
+              <Button onClick={() => beginOauthFlow()}>Connect to GMAIL</Button>
             </div>
           </div>
           {/* TODO: Add rows of quick actions like new emails, total emails, etc. */}
