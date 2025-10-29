@@ -46,7 +46,7 @@ export default function Inbox() {
     );
 
     const emails = await data.json();
-
+    console.log("Email: ", emails[0]);
     return emails;
   };
 

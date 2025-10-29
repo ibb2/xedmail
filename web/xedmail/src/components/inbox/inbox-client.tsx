@@ -21,20 +21,57 @@ import DOMPurify from "dompurify";
 import { Button } from "../ui/button";
 import { Mail, MailOpen } from "lucide-react";
 import { useAuth } from "@clerk/nextjs";
+import {
+  Item,
+  ItemActions,
+  ItemContent,
+  ItemDescription,
+  ItemMedia,
+  ItemTitle,
+} from "../ui/item";
+import { Avatar, AvatarFallback, AvatarImage } from "../ui/avatar";
 
-export default function InboxClient({ emails }: { emails: any[] }) {
-  const [selectedEmail, setSelectedEmail] = React.useState<any>(null);
+interface Email {
+  id: string;
+  uid: string;
+  subject: string;
+  from: [string, string];
+  to: string;
+  body: string;
+  date: string;
+  isRead: boolean;
+}
+
+interface Mailbox {
+  id: string;
+  emailAddress: string;
+  image: string;
+}
+
+export default function InboxClient({ emails }: { emails: Email[] }) {
+  const [selectedEmail, setSelectedEmail] = React.useState<Email | null>(null);
   const [body, setBody] = useState("");
+  const [ran, setRan] = React.useState(false);
+  const [mailboxes, setMailboxes] = React.useState<Mailbox[]>([]);
 
   const { getToken } = useAuth();
 
   // Use local state so updates cause a re-render
   const [localEmails, setLocalEmails] = useState(emails);
 
-  // Keep local state in sync if parent prop changes
-  useEffect(() => {
-    setLocalEmails(emails);
-  }, [emails]);
+  const getMailboxes = async () => {
+    const token = await getToken();
+
+    const response = await fetch("http://localhost:5172/mailboxes", {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
+    const mailboxes = await response.json();
+    console.log("Get all mailboxes ", mailboxes);
+    setMailboxes(mailboxes);
+  };
 
   const clean = () => {
     if (!body) return "";
@@ -93,6 +130,21 @@ export default function InboxClient({ emails }: { emails: any[] }) {
     return body;
   };
 
+  const getInitials = (name: string) => {
+    const words = name.split(" ");
+
+    return words.map((word) => word.charAt(0).toUpperCase()).slice(0, 2);
+  };
+
+  // Keep local state in sync if parent prop changes
+  useEffect(() => {
+    setLocalEmails(emails);
+    if (!ran) {
+      getMailboxes();
+      setRan(true);
+    }
+  }, [emails, ran, getMailboxes]);
+
   return (
     <div className="flex flex-col items-center justify-center h-full">
       <p>Inbox</p>
@@ -104,8 +156,9 @@ export default function InboxClient({ emails }: { emails: any[] }) {
         }}
       >
         <ul className="flex flex-col gap-y-1 w-2/3 max-w-2xl">
-          {localEmails.map((email) => (
-            <Card
+          {localEmails.map((email: Email) => (
+            <Item
+              variant="outline"
               key={email.id}
               onClick={async () => {
                 console.log("Clicked email");
@@ -114,37 +167,93 @@ export default function InboxClient({ emails }: { emails: any[] }) {
                 console.log("Fetched body");
               }}
             >
-              <CardHeader>
+              <ItemMedia>
+                <div className="*:data-[slot=avatar]:ring-background flex -space-x-2 *:data-[slot=avatar]:ring-2 *:data-[slot=avatar]:grayscale">
+                  <Avatar className="hidden sm:flex">
+                    <AvatarImage
+                      src={
+                        mailboxes.find(
+                          (mailbox: Mailbox) =>
+                            mailbox.emailAddress === email.to,
+                        )?.image
+                      }
+                      alt="@shadcn"
+                      onError={(e) => {
+                        console.log("Error loading image", e);
+                      }}
+                    />
+                    <AvatarFallback>CN</AvatarFallback>
+                  </Avatar>
+                  <Avatar className="hidden sm:flex">
+                    <AvatarImage src="#" alt="@maxleiter" />
+                    <AvatarFallback>
+                      {getInitials(email.from[0])}
+                    </AvatarFallback>
+                  </Avatar>
+                  {/*<Avatar>
+                    <AvatarImage
+                      src="https://github.com/evilrabbit.png"
+                      alt="@evilrabbit"
+                    />
+                    <AvatarFallback>ER</AvatarFallback>
+                  </Avatar>*/}
+                  {/*<Avatar className="hidden sm:flex">
+                    <AvatarImage
+                      src="https://github.com/shadcn.png"
+                      alt="@shadcn"
+                    />
+                    <AvatarFallback>CN</AvatarFallback>
+                  </Avatar>
+                  <Avatar className="hidden sm:flex">
+                    <AvatarImage
+                      src="https://github.com/maxleiter.png"
+                      alt="@maxleiter"
+                    />
+                    <AvatarFallback>LR</AvatarFallback>
+                  </Avatar>
+                  <Avatar>
+                    <AvatarImage
+                      src="https://github.com/evilrabbit.png"
+                      alt="@evilrabbit"
+                    />
+                    <AvatarFallback>ER</AvatarFallback>
+                  </Avatar>*/}
+                </div>
+              </ItemMedia>
+              <ItemContent>
                 <DialogTrigger>
-                  <CardTitle>{email.from}</CardTitle>
+                  <ItemTitle>{email.from[email.from.length - 1]}</ItemTitle>
                 </DialogTrigger>
-                <CardDescription>{email.subject}</CardDescription>
-                <CardAction>
-                  {email.isRead && (
-                    <Button
-                      size="icon"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        toggleRead(email);
-                      }}
-                    >
-                      <MailOpen />
-                    </Button>
-                  )}
-                  {email.isRead === false && (
-                    <Button
-                      size="icon"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        toggleRead(email);
-                      }}
-                    >
-                      <Mail />
-                    </Button>
-                  )}
-                </CardAction>
-              </CardHeader>
-            </Card>
+                <ItemDescription>{email.subject}</ItemDescription>
+              </ItemContent>
+              <ItemActions>
+                {/*<Button size="sm" variant="outline">
+                  Invite
+                </Button>*/}
+                {email.isRead && (
+                  <Button
+                    size="icon"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      toggleRead(email);
+                    }}
+                  >
+                    <MailOpen />
+                  </Button>
+                )}
+                {email.isRead === false && (
+                  <Button
+                    size="icon"
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      toggleRead(email);
+                    }}
+                  >
+                    <Mail />
+                  </Button>
+                )}
+              </ItemActions>
+            </Item>
           ))}
         </ul>
         <DialogContent

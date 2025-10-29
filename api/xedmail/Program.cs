@@ -433,7 +433,7 @@ app.MapGet("/api/inbox/all", async (
     {
         Id = m.MessageId ?? Guid.NewGuid().ToString(),
         Subject = m.Subject ?? "(No Subject)",
-        From = m.From.Mailboxes.FirstOrDefault()?.Address ?? "unknown",
+        From = [m.From.Mailboxes.FirstOrDefault()?.Name ?? "Jane Doe" ,m.From.Mailboxes.FirstOrDefault()?.Address ?? "unknown"],
         To = string.Join(", ", m.To.Mailboxes.Select(mb => mb.Address)),
         Body = m.HtmlBody ?? m.TextBody ?? "(No Content)",
         Date = m.Date.UtcDateTime,
@@ -619,7 +619,11 @@ app.MapGet("/search", async (HttpContext ctx, ILogger<Program> logger, AppDbCont
                 Id = m.GMailMessageId?.ToString() ?? Guid.NewGuid().ToString(),
                 Uid = info?.UniqueId.Id.ToString() ?? Guid.NewGuid().ToString(),
                 Subject = m.NormalizedSubject ?? "(No Subject)",
-                From = m.Envelope?.From?.Mailboxes?.FirstOrDefault()?.Address ?? "unknown",
+                From =
+                [
+                    m.Envelope?.From.Mailboxes?.FirstOrDefault().Name ?? "Jane Doe",
+                    m.Envelope?.From?.Mailboxes?.FirstOrDefault()?.Address ?? "unknown"
+                ],
                 To = m.Envelope?.To != null
                     ? string.Join(", ", m.Envelope.To.Mailboxes.Select(mb => mb.Address))
                     : "unknown",
@@ -752,7 +756,11 @@ app.MapGet("/emails/{emailId}",
             Id = messageSummaryInfo?.GMailMessageId.ToString() ?? Guid.NewGuid().ToString(),
             Uid = messageSummaryInfo?.UniqueId.Id.ToString() ?? Guid.NewGuid().ToString(),
             Subject = message.Subject ?? "(No Subject)",
-            From = messageSummaryInfo?.Envelope?.From?.Mailboxes?.FirstOrDefault()?.Address ?? "unknown",
+            From =
+            [
+                messageSummaryInfo?.Envelope?.From?.Mailboxes?.FirstOrDefault()?.Name ?? "Jane Doe",
+                messageSummaryInfo?.Envelope?.From?.Mailboxes?.FirstOrDefault()?.Address ?? "unknown"
+            ],
             To = messageSummaryInfo?.Envelope?.To != null
                 ? string.Join(", ", messageSummaryInfo.Envelope.To.Mailboxes.Select(mb => mb.Address))
                 : "unknown",
@@ -895,7 +903,7 @@ public class EmailDto
     public string Id { get; set; } = string.Empty;
     public string Uid { get; set; } = string.Empty;
     public string Subject { get; set; } = string.Empty;
-    public string From { get; set; } = string.Empty;
+    public string[]? From { get; set; } = [];
     public string? To { get; set; }
     public string? Body { get; set; }
     public DateTime Date { get; set; }

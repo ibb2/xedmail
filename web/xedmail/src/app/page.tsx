@@ -73,7 +73,10 @@ export default function Home() {
   };
 
   useEffect(() => {
-    if (!ran) getMailboxes();
+    if (!ran) {
+      getMailboxes();
+      setRan(true);
+    }
   }, [ran]);
 
   return (
