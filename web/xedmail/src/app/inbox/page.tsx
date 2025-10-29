@@ -53,7 +53,6 @@ export default function Inbox() {
   React.useEffect(() => {
     if (!ran) {
       getAllEmails().then((emails) => {
-        console.log("Emails:", emails);
         setEmails(emails);
         setRan(true);
       });

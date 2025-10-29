@@ -37,7 +37,6 @@ export default function Home() {
       }
 
       const data = await response.json();
-      console.log("Data :", data["authUrl"]);
       router.push(data["authUrl"]);
     });
   };

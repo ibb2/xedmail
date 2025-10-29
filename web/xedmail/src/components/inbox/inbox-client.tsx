@@ -20,9 +20,13 @@ import {
 import DOMPurify from "dompurify";
 import { Button } from "../ui/button";
 import { Mail, MailOpen } from "lucide-react";
+import { useAuth } from "@clerk/nextjs";
 
 export default function InboxClient({ emails }: { emails: any[] }) {
   const [selectedEmail, setSelectedEmail] = React.useState<any>(null);
+  const [body, setBody] = useState("");
+
+  const { getToken } = useAuth();
 
   // Use local state so updates cause a re-render
   const [localEmails, setLocalEmails] = useState(emails);
@@ -32,12 +36,11 @@ export default function InboxClient({ emails }: { emails: any[] }) {
     setLocalEmails(emails);
   }, [emails]);
 
-  console.log(localEmails);
-
   const clean = () => {
-    if (!selectedEmail) return "";
-    return DOMPurify.sanitize(selectedEmail.body);
+    if (!body) return "";
+    return DOMPurify.sanitize(body);
   };
+
   const htmlEmailBody = { __html: clean() };
 
   // Accept the email to toggle and stop event propagation from the button
@@ -68,13 +71,49 @@ export default function InboxClient({ emails }: { emails: any[] }) {
     }
   };
 
+  const fetchBody = async (email: any) => {
+    const token = await getToken();
+
+    console.log("Email ID: ", email.id);
+    console.log("Email UID: ", email.uid);
+
+    const response = await fetch(
+      `http://localhost:5172/emails/${email.uid}?query=${encodeURIComponent(email.to)}`,
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      },
+    );
+
+    const res = await response.json();
+    const body = res.body;
+    console.log("Fetching email body, ", body);
+    setBody(body);
+    return body;
+  };
+
   return (
     <div className="flex flex-col items-center justify-center h-full">
       <p>Inbox</p>
-      <Dialog>
+      <Dialog
+        onOpenChange={(open) => {
+          if (open === false) {
+            setBody("");
+          }
+        }}
+      >
         <ul className="flex flex-col gap-y-1 w-2/3 max-w-2xl">
           {localEmails.map((email) => (
-            <Card key={email.id} onClick={() => setSelectedEmail(email)}>
+            <Card
+              key={email.id}
+              onClick={async () => {
+                console.log("Clicked email");
+                setSelectedEmail(email);
+                await fetchBody(email).then(setBody);
+                console.log("Fetched body");
+              }}
+            >
               <CardHeader>
                 <DialogTrigger>
                   <CardTitle>{email.from}</CardTitle>
