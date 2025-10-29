@@ -147,7 +147,10 @@ export default function InboxClient({ emails }: { emails: any[] }) {
             </Card>
           ))}
         </ul>
-        <DialogContent className="overflow-x-auto w-full max-w-3/5! h-2/3">
+        <DialogContent
+          className="overflow-x-auto w-full max-w-3/5! h-2/3"
+          onCloseAutoFocus={(event) => event.preventDefault()}
+        >
           <DialogHeader>
             <DialogTitle>{selectedEmail?.subject}</DialogTitle>
             <DialogDescription>
