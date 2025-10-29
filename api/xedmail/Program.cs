@@ -566,7 +566,7 @@ app.MapGet("/search", async (HttpContext ctx, ILogger<Program> logger, AppDbCont
         }
 
         var searchResults = await inbox.SearchAsync(search);
-        var twentySearchResults = searchResults.TakeLast(20).ToList();
+        var twentySearchResults = searchResults.ToList();
         var messageSummaries = await inbox.FetchAsync(
             twentySearchResults,
             MessageSummaryItems.Envelope |
