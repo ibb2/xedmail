@@ -8,6 +8,7 @@ using MailKit.Security;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.EntityFrameworkCore;
+using MimeKit;
 using Newtonsoft.Json.Linq;
 using xedmail.Authentication;
 using xedmail.Mail;
@@ -443,6 +444,7 @@ app.MapGet("/api/inbox/all", async (
 
 app.MapGet("/search", async (HttpContext ctx, ILogger<Program> logger, AppDbContext db, [FromQuery] string query) =>
 {
+    var startTime = DateTime.UtcNow;
     // Verify user request and get their unique id
     logger.LogInformation("Searching for {Query}", query);
     var request = ctx.Request;
@@ -564,29 +566,73 @@ app.MapGet("/search", async (HttpContext ctx, ILogger<Program> logger, AppDbCont
         }
 
         var searchResults = await inbox.SearchAsync(search);
-        var infoRaw = await inbox.FetchAsync(searchResults, MessageSummaryItems.Full | MessageSummaryItems.UniqueId);
-        var info = infoRaw.Reverse().ToList();
-        var trimmedSearchResults = searchResults.TakeLast(20).Reverse();
-        var messages = trimmedSearchResults.Select(x => inbox.GetMessage(x)).ToList();
+        var twentySearchResults = searchResults.TakeLast(20).ToList();
+        var messageSummaries = await inbox.FetchAsync(
+            twentySearchResults,
+            MessageSummaryItems.Envelope |
+            MessageSummaryItems.GMailMessageId |
+            MessageSummaryItems.Flags |
+            MessageSummaryItems.BodyStructure
+        );        var messagesSummariesInfoList = messageSummaries.Reverse().ToList();
+        // var trimmedSearchResults = searchResults.TakeLast(20).Reverse();
+        // var messages = trimmedSearchResults.Select(x => inbox.GetMessage(x)).ToList();
 
-        logger.LogInformation("Got {Count} messages", messages.Count);
+        logger.LogInformation("Got {Count} messages", messageSummaries.Count);
 
-        var emailDto = messages.Select((m, index) => new EmailDto
+        // We already have messageSummaries and messagesSummariesInfoList (both reversed)
+        var summariesList = messageSummaries.Reverse().ToList();
+        var infoList = messagesSummariesInfoList; // Already reversed above
+
+        var emailsForMailbox = new List<EmailDto>();
+
+        foreach (var (m, index) in summariesList.Select((m, i) => (m, i)))
         {
-            Id = m.MessageId ?? Guid.NewGuid().ToString(),
-            Uid = info[index].UniqueId.ToString(),
-            Subject = m.Subject ?? "(No Subject)",
-            From = m.From.Mailboxes.FirstOrDefault()?.Address ?? "unknown",
-            To = string.Join(", ", m.To.Mailboxes.Select(mb => mb.Address)),
-            Body = m.HtmlBody ?? m.TextBody ?? "(No Content)",
-            Date = m.Date.UtcDateTime,
-            IsRead = info[index].Flags!.Value.HasFlag(MessageFlags.Seen)
-        });
+            var info = index < infoList.Count ? infoList[index] : null;
+            // string? bodyPreview = null;
+            //
+            // var textPart = m.TextBody ?? m.HtmlBody;
+            // if (textPart != null)
+            // {
+            //     try
+            //     {
+            //         // Fetch one at a time to avoid concurrency
+            //         var bodyPart = await inbox.GetBodyPartAsync(m.UniqueId, textPart);
+            //
+            //         if (bodyPart is TextPart textPartContent)
+            //         {
+            //             var text = textPartContent.Text;
+            //             bodyPreview = text.Length > 500 ? text[..500] + "..." : text;
+            //         }
+            //     }
+            //     catch (Exception ex)
+            //     {
+            //         logger.LogWarning(ex, "Failed to fetch body preview for message {Id}", m.GMailMessageId);
+            //     }
+            // }
 
-        emails.AddRange(emailDto);
+            emailsForMailbox.Add(new EmailDto
+            {
+                Id = m.GMailMessageId?.ToString() ?? Guid.NewGuid().ToString(),
+                Uid = info?.EmailId?.ToString() ?? Guid.NewGuid().ToString(),
+                Subject = m.NormalizedSubject ?? "(No Subject)",
+                From = m.Envelope?.From?.Mailboxes?.FirstOrDefault()?.Address ?? "unknown",
+                To = m.Envelope?.To != null
+                    ? string.Join(", ", m.Envelope.To.Mailboxes.Select(mb => mb.Address))
+                    : "unknown",
+                // Body = bodyPreview ?? "(No Content)",
+                Date = m.Date != default ? m.Date.UtcDateTime : DateTime.UtcNow,
+                IsRead = info?.Flags?.HasFlag(MessageFlags.Seen) ?? false
+            });
+        }
+
+        emails.AddRange(emailsForMailbox);
 
         await client.DisconnectAsync(true);
     }
+    
+    var endTime = DateTime.UtcNow;
+    
+    logger.LogInformation("Fetched emails for {ClerkId}'s inboxes in {ElapsedMinutes}m and {ElapsedSeconds}s", userClerkId, (endTime - startTime).TotalMinutes, (endTime - startTime).TotalSeconds);
 
     return Results.Ok(emails);
 });
