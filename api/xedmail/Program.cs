@@ -330,7 +330,8 @@ app.MapGet("/oauth/callback", async (HttpRequest req, ILogger<Program> logger, A
         {
             Id = Guid.NewGuid(),
             Provider = provider,
-            EmailAddress = email
+            EmailAddress = email,
+            Image = userInfoJson?["picture"].ToString()
         };
         profile.Mailboxes.Add(mailbox);
         isNewMailbox = true;
@@ -837,6 +838,34 @@ app.MapPatch("/api/emails/{uid}",
         return Results.NoContent();
     });
 
+
+// Mailboxes
+
+app.MapGet("/mailboxes", async (HttpContext ctx, ILogger<Program> logger, AppDbContext db) =>
+{
+    // Get all mailboxes for the user
+    
+    logger.LogInformation("Getting mailboxes");
+    // Verify user request and get their unique id
+    var userAuth = new UserAuthentication();
+    var clerkValidationInfo = await userAuth.ValidateSessionAsync(ctx.Request);
+
+    if (!clerkValidationInfo.IsSignedIn)
+    {
+        return Results.Unauthorized();
+    }
+    
+    // Get all mailboxes for the user from the database
+    var userProfile = await db.UserProfiles.Include(p => p.Mailboxes).FirstOrDefaultAsync(p => p.ClerkUserId == clerkValidationInfo.UserId);
+
+
+    var mailboxes = userProfile?.Mailboxes.Select(m => new MailboxDto
+        { Id = m.Id.ToString(), EmailAddress = m.EmailAddress, Image = m.Image }
+    );
+    
+    return userProfile == null ? Results.NotFound($"No mailboxes found for userProfile {clerkValidationInfo.UserId}") : Results.Ok(mailboxes);
+});
+
 app.Run();
 
 record WeatherForecast(DateOnly Date, int TemperatureC, string? Summary)
@@ -850,6 +879,14 @@ public partial record OAuthStateEntry
     public string ClerkUserId { get; set; }
     public string Provider { get; set; }
     public DateTime Timestamp { get; set; }
+}
+
+public class MailboxDto
+{
+    public string Id { get; set; }
+    public string EmailAddress { get; set; }
+    public string Image { get; set; }
+    
 }
 
 // Add this class to your Program.cs

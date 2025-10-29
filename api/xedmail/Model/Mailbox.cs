@@ -5,6 +5,8 @@ public class Mailbox
     public Guid Id { get; set; }
     public string Provider { get; set; }           // e.g., "gmail", "outlook", "generic-imap"
     public string EmailAddress { get; set; }       // the mailbox email
+    public string? Image { get; set; }                          // URL to image
+
     public string EncryptedAccessToken { get; set; }        // Encrypted
     public string EncryptedRefreshToken { get; set; }       // nullable if provider doesn't send one also Encrypted
     public DateTimeOffset? AccessTokenExpiresAt { get; set; }
@@ -15,5 +17,4 @@ public class Mailbox
     public string? RefreshTokenHash { get; set; }      // optionally store hash for revoke checks
     public string? UserProfileClerkUserId { get; set; }
     public UserProfile UserProfile { get; set; }
-
 }
