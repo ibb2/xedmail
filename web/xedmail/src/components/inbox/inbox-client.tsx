@@ -168,7 +168,7 @@ export default function InboxClient({ emails }: { emails: Email[] }) {
               }}
             >
               <ItemMedia>
-                <div className="*:data-[slot=avatar]:ring-background flex -space-x-2 *:data-[slot=avatar]:ring-2 *:data-[slot=avatar]:grayscale">
+                <div className="*:data-[slot=avatar]:ring-background flex -space-x-2 *:data-[slot=avatar]:ring-2">
                   <Avatar className="hidden sm:flex">
                     <AvatarImage
                       src={
