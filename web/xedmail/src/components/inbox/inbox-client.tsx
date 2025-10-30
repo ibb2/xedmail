@@ -81,15 +81,18 @@ export default function InboxClient({ emails }: { emails: Email[] }) {
   const htmlEmailBody = { __html: clean() };
 
   // Accept the email to toggle and stop event propagation from the button
-  const toggleRead = (email: any) => {
+  const toggleRead = async (email: any) => {
     if (!email) return;
+
+    const token = await getToken();
 
     // Optionally send PATCH to server here...
     fetch(
-      `http://localhost:5172/api/emails/${email.uid}?email=${email.to}&isRead=${email.isRead}`,
+      `http://localhost:5172/emails/${email.to}/${email.uid}?isRead=${email.isRead}`,
       {
         method: "PATCH",
         headers: {
+          Authorization: `Bearer ${token}`,
           "Content-Type": "application/json",
         },
       },
@@ -102,10 +105,10 @@ export default function InboxClient({ emails }: { emails: Email[] }) {
       prev.map((e) => (e.id === email.id ? updatedEmail : e)),
     );
 
-    // Also update selectedEmail if it's the same one currently open
-    if (selectedEmail?.id === email.id) {
-      setSelectedEmail(updatedEmail);
-    }
+    // // Also update selectedEmail if it's the same one currently open
+    // if (selectedEmail?.id === email.id) {
+    //   setSelectedEmail(updatedEmail);
+    // }
   };
 
   const fetchBody = async (email: any) => {
@@ -138,8 +141,8 @@ export default function InboxClient({ emails }: { emails: Email[] }) {
 
   // Keep local state in sync if parent prop changes
   useEffect(() => {
-    setLocalEmails(emails);
     if (!ran) {
+      setLocalEmails(emails);
       getMailboxes();
       setRan(true);
     }
@@ -226,9 +229,7 @@ export default function InboxClient({ emails }: { emails: Email[] }) {
                 </ItemMedia>
                 <ItemContent>
                   <DialogTrigger>
-                    <ItemTitle>
-                      {email.from[email.from.length - 1]} {"->"} {email.to}
-                    </ItemTitle>
+                    <ItemTitle>{email.from[email.from.length - 1]}</ItemTitle>
                   </DialogTrigger>
                   <ItemDescription>{email.subject}</ItemDescription>
                 </ItemContent>
@@ -268,7 +269,9 @@ export default function InboxClient({ emails }: { emails: Email[] }) {
         >
           <DialogHeader>
             <DialogTitle>{selectedEmail?.subject}</DialogTitle>
-            <DialogDescription>{selectedEmail?.from}</DialogDescription>
+            <DialogDescription>
+              {selectedEmail?.from} - {selectedEmail?.date}
+            </DialogDescription>
             {/** biome-ignore lint/security/noDangerouslySetInnerHtml: <explanation> */}
             <div dangerouslySetInnerHTML={htmlEmailBody}></div>
           </DialogHeader>

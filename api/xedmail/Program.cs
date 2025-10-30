@@ -866,30 +866,35 @@ app.MapGet("/emails/{emailId}",
         return Results.Ok(email);
     });
 
-app.MapPatch("/api/emails/{uid}",
-    async (HttpContext ctx, ILogger<Program> logger, AppDbContext db, string uid, string email, bool isRead) =>
+app.MapPatch("/emails/{email}/{uid}",
+    async (HttpContext ctx, ILogger<Program> logger, AppDbContext db, string email, string uid, bool isRead) =>
     {
+        // Verify user request and get their unique id
+        var userAuth = new UserAuthentication();
+        var clerkValidationInfo = await userAuth.ValidateSessionAsync(ctx.Request);
+
+        if (!clerkValidationInfo.IsSignedIn)
+        {
+            return Results.Unauthorized();
+        }
+        
         logger.LogInformation("Email {Uid} Read status is {IsRead} for {email}", uid, isRead, email);
 
         // Database
-        var userToken = await db.UserTokens.FirstOrDefaultAsync(t => t.Email == email);
+        var userProfile = await db.UserProfiles.Include(p => p.Mailboxes)
+            .FirstOrDefaultAsync(p => p.ClerkUserId == clerkValidationInfo.UserId);
+        var mailbox = userProfile?.Mailboxes.Find(m => m.EmailAddress == email);
 
         using var http = new HttpClient();
 
-        if (userToken == null)
-        {
-            logger.LogWarning("No token found for {Email}", email);
-            return Results.NotFound("User not authenticated with Google");
-        }
-
-        // Check if token is expired
-        if (userToken.ExpiresAt <= DateTime.UtcNow)
+        // Check if the access token is expired
+        if (mailbox?.AccessTokenExpiresAt <= DateTime.UtcNow)
         {
             logger.LogWarning("Access token expired for {Email}", email);
 
             var data = new Dictionary<string, string>
             {
-                ["refresh_token"] = userToken.RefreshToken!,
+                ["refresh_token"] = mailbox.EncryptedRefreshToken!,
                 ["client_id"] = builder.Configuration["Google:ClientId"]!,
                 ["client_secret"] = builder.Configuration["Google:ClientSecret"]!,
                 ["grant_type"] = "refresh_token"
@@ -904,9 +909,8 @@ app.MapPatch("/api/emails/{uid}",
 
             logger.LogInformation("Refreshed access token for {Email}, {refreshedAccessToken}", email,
                 refreshedAccessToken);
-            userToken.AccessToken = refreshedAccessToken["access_token"].ToString()!;
-            userToken.ExpiresAt = DateTime.UtcNow.AddSeconds(int.Parse(refreshedAccessToken["expires_in"].ToString()!));
-            userToken.UpdatedAt = DateTime.UtcNow;
+            mailbox.EncryptedAccessToken = refreshedAccessToken["access_token"].ToString()!;
+            mailbox.AccessTokenExpiresAt = DateTime.UtcNow.AddSeconds(int.Parse(refreshedAccessToken["expires_in"].ToString()!));
             await db.SaveChangesAsync();
 
             return Results.Problem("Access token expired. Please re-authenticate.");
@@ -914,13 +918,13 @@ app.MapPatch("/api/emails/{uid}",
 
         using var client = new ImapClient();
         await client.ConnectAsync("imap.gmail.com", 993, SecureSocketOptions.SslOnConnect);
-        var oauth2 = new SaslMechanismOAuthBearer(email, userToken.AccessToken);
+        var oauth2 = new SaslMechanismOAuthBearer(email, mailbox.EncryptedAccessToken);
         await client.AuthenticateAsync(oauth2);
 
         var inbox = client.Inbox;
         inbox.Open(FolderAccess.ReadWrite);
 
-        var emailUid = MailKit.UniqueId.Parse(uid);
+        var emailUid = UniqueId.Parse(uid);
         var message = await inbox.GetMessageAsync(emailUid);
 
         if (message == null) return Results.Problem("Message not found");
