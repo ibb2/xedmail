@@ -156,48 +156,52 @@ export default function InboxClient({ emails }: { emails: Email[] }) {
         }}
       >
         <ul className="flex flex-col gap-y-1 w-2/3 max-w-2xl">
-          {localEmails.map((email: Email) => (
-            <Item
-              variant="outline"
-              key={email.id}
-              onClick={async () => {
-                console.log("Clicked email");
-                setSelectedEmail(email);
-                await fetchBody(email).then(setBody);
-                console.log("Fetched body");
-              }}
-            >
-              <ItemMedia>
-                <div className="*:data-[slot=avatar]:ring-background flex -space-x-2 *:data-[slot=avatar]:ring-2">
-                  <Avatar className="hidden sm:flex">
-                    <AvatarImage
-                      src={
-                        mailboxes.find(
-                          (mailbox: Mailbox) =>
-                            mailbox.emailAddress === email.to,
-                        )?.image
-                      }
-                      alt="@shadcn"
-                      onError={(e) => {
-                        console.log("Error loading image", e);
-                      }}
-                    />
-                    <AvatarFallback>CN</AvatarFallback>
-                  </Avatar>
-                  <Avatar className="hidden sm:flex">
-                    <AvatarImage src="#" alt="@maxleiter" />
-                    <AvatarFallback>
-                      {getInitials(email.from[0])}
-                    </AvatarFallback>
-                  </Avatar>
-                  {/*<Avatar>
+          {localEmails
+            .sort((a, b) => Date.parse(b.date) - Date.parse(a.date))
+            .map((email: Email) => (
+              <Item
+                variant="outline"
+                key={email.id}
+                onClick={async () => {
+                  console.log("Clicked email");
+                  setSelectedEmail(email);
+                  await fetchBody(email).then(setBody);
+                  console.log("Fetched body");
+                }}
+              >
+                <ItemMedia>
+                  <div className="*:data-[slot=avatar]:ring-background flex -space-x-2 *:data-[slot=avatar]:ring-2">
+                    <Avatar className="hidden sm:flex">
+                      <AvatarImage
+                        src={
+                          mailboxes.find(
+                            (mailbox: Mailbox) =>
+                              mailbox.emailAddress === email.to,
+                          )?.image
+                        }
+                        alt="@shadcn"
+                        onError={(e) => {
+                          console.log("Error loading image", e);
+                        }}
+                      />
+                      <AvatarFallback>
+                        {email.to.charAt(0).toUpperCase()}
+                      </AvatarFallback>
+                    </Avatar>
+                    <Avatar className="hidden sm:flex">
+                      <AvatarImage src="#" alt="@maxleiter" />
+                      <AvatarFallback>
+                        {getInitials(email.from[0])}
+                      </AvatarFallback>
+                    </Avatar>
+                    {/*<Avatar>
                     <AvatarImage
                       src="https://github.com/evilrabbit.png"
                       alt="@evilrabbit"
                     />
                     <AvatarFallback>ER</AvatarFallback>
                   </Avatar>*/}
-                  {/*<Avatar className="hidden sm:flex">
+                    {/*<Avatar className="hidden sm:flex">
                     <AvatarImage
                       src="https://github.com/shadcn.png"
                       alt="@shadcn"
@@ -218,43 +222,45 @@ export default function InboxClient({ emails }: { emails: Email[] }) {
                     />
                     <AvatarFallback>ER</AvatarFallback>
                   </Avatar>*/}
-                </div>
-              </ItemMedia>
-              <ItemContent>
-                <DialogTrigger>
-                  <ItemTitle>{email.from[email.from.length - 1]}</ItemTitle>
-                </DialogTrigger>
-                <ItemDescription>{email.subject}</ItemDescription>
-              </ItemContent>
-              <ItemActions>
-                {/*<Button size="sm" variant="outline">
+                  </div>
+                </ItemMedia>
+                <ItemContent>
+                  <DialogTrigger>
+                    <ItemTitle>
+                      {email.from[email.from.length - 1]} {"->"} {email.to}
+                    </ItemTitle>
+                  </DialogTrigger>
+                  <ItemDescription>{email.subject}</ItemDescription>
+                </ItemContent>
+                <ItemActions>
+                  {/*<Button size="sm" variant="outline">
                   Invite
                 </Button>*/}
-                {email.isRead && (
-                  <Button
-                    size="icon"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      toggleRead(email);
-                    }}
-                  >
-                    <MailOpen />
-                  </Button>
-                )}
-                {email.isRead === false && (
-                  <Button
-                    size="icon"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      toggleRead(email);
-                    }}
-                  >
-                    <Mail />
-                  </Button>
-                )}
-              </ItemActions>
-            </Item>
-          ))}
+                  {email.isRead && (
+                    <Button
+                      size="icon"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggleRead(email);
+                      }}
+                    >
+                      <MailOpen />
+                    </Button>
+                  )}
+                  {email.isRead === false && (
+                    <Button
+                      size="icon"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        toggleRead(email);
+                      }}
+                    >
+                      <Mail />
+                    </Button>
+                  )}
+                </ItemActions>
+              </Item>
+            ))}
         </ul>
         <DialogContent
           className="overflow-x-auto w-full max-w-3/5! h-2/3"
@@ -262,9 +268,7 @@ export default function InboxClient({ emails }: { emails: Email[] }) {
         >
           <DialogHeader>
             <DialogTitle>{selectedEmail?.subject}</DialogTitle>
-            <DialogDescription>
-              {selectedEmail?.from} - {selectedEmail?.date}
-            </DialogDescription>
+            <DialogDescription>{selectedEmail?.from}</DialogDescription>
             {/** biome-ignore lint/security/noDangerouslySetInnerHtml: <explanation> */}
             <div dangerouslySetInnerHTML={htmlEmailBody}></div>
           </DialogHeader>

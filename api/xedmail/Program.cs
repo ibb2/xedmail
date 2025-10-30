@@ -226,12 +226,8 @@ app.MapGet("/weatherforecast", () =>
 
 app.MapGet("/oauth/callback", async (HttpRequest req, ILogger<Program> logger, AppDbContext db) =>
 {
-    // 1) Validate 'state' stored in session or DB (CSRF)
-    // 2) Validate Clerk session from Authorization header / cookie -> get clerkUserId
     var userAuth = new UserAuthentication();
-    // var data = await userAuth.ValidateSessionAsync(req);
-    // var clerkUserId = data.UserId; 
-
+    
     var q = req.Query;
     string state = q["state"];
     string code = q["code"];
@@ -241,12 +237,9 @@ app.MapGet("/oauth/callback", async (HttpRequest req, ILogger<Program> logger, A
     if (!_stateStore.TryRemove(state, out var entry))
         return Results.BadRequest("Invalid or expired state");
 
-    // optional: check entry.CreatedAt not too old
-
     string clerkUserId = entry.ClerkUserId;
     string provider = entry.Provider;
 
-    // 3) Exchange code for tokens with provider
     if (string.IsNullOrEmpty(code))
     {
         logger.LogWarning("OAuth callback received without authorization code");
@@ -286,8 +279,6 @@ app.MapGet("/oauth/callback", async (HttpRequest req, ILogger<Program> logger, A
         return Results.Problem("Invalid token response");
     }
 
-    // 4) Get the user's email from token / userinfo endpoint if possible
-    // Get user info
     var userInfoResponse = await http.GetAsync(
         $"https://www.googleapis.com/oauth2/v3/userinfo?access_token={tokenResponse["access_token"]}");
     var userInfoJson = await userInfoResponse.Content.ReadFromJsonAsync<Dictionary<string, object>>();
@@ -301,53 +292,151 @@ app.MapGet("/oauth/callback", async (HttpRequest req, ILogger<Program> logger, A
 
     logger.LogInformation("Successfully obtained OAuth tokens for {Email}", email);
 
-    // Calculate expiry
     var expiresIn = int.Parse(tokenResponse["expires_in"].ToString()!);
     var expiresAt = DateTime.UtcNow.AddSeconds(expiresIn);
     logger.LogInformation("Token expiry: {ExpiresAt}", expiresAt);
 
-    // 5) Create or update UserProfile / Mailbox
-    // Check if user already exists
-// Check if user already exists
+    // Load or create profile with tracking
+    logger.LogInformation("Checking if user {ClerkUserId} already exists", clerkUserId);
     var profile = await db.UserProfiles
-        .Include(p => p.Mailboxes) // IMPORTANT: Load mailboxes
+        .Include(p => p.Mailboxes)
         .FirstOrDefaultAsync(p => p.ClerkUserId == clerkUserId);
 
-    bool isNewProfile = false;
     if (profile == null)
     {
-        profile = new UserProfile { ClerkUserId = clerkUserId };
-        db.UserProfiles.Add(profile); // Use Add() for new entities
-        isNewProfile = true;
+        // Create new profile
+        logger.LogInformation("Creating new profile for user {ClerkUserId}", clerkUserId);
+        profile = new UserProfile 
+        { 
+            ClerkUserId = clerkUserId 
+        };
+        db.UserProfiles.Add(profile);
     }
 
-    var mailbox = profile.Mailboxes.FirstOrDefault(m => m.EmailAddress == email && m.Provider == provider);
+    // Check if mailbox exists for this email and provider
+    logger.LogInformation("Checking if mailbox {Email} already exists", email);
+    
+    // IMPORTANT: Check both in-memory collection AND database
+    var mailbox = profile.Mailboxes
+        .FirstOrDefault(m => m.EmailAddress == email && m.Provider == provider);
+    
+    // Also check the change tracker for any detached/deleted mailboxes
+    var trackedMailbox = db.ChangeTracker.Entries<Mailbox>()
+        .FirstOrDefault(e => e.Entity.EmailAddress == email && e.Entity.Provider == provider);
+    
+    if (trackedMailbox != null)
+    {
+        logger.LogInformation("Found mailbox {Email} in change tracker with state {State}", 
+            email, trackedMailbox.State);
+        
+        if (trackedMailbox.State == EntityState.Deleted)
+        {
+            logger.LogWarning("Mailbox was marked as deleted, changing to Modified");
+            trackedMailbox.State = EntityState.Modified;
+            mailbox = trackedMailbox.Entity;
+        }
+    }
 
-    bool isNewMailbox = false;
     if (mailbox == null)
     {
+        // Create new mailbox
+        logger.LogInformation("Creating new mailbox {Email}", email);
+        
+        var newMailboxId = Guid.NewGuid();
+        logger.LogInformation("Generated new mailbox ID: {MailboxId}", newMailboxId);
+        
         mailbox = new Mailbox
         {
-            Id = Guid.NewGuid(),
+            Id = newMailboxId,
             Provider = provider,
             EmailAddress = email,
-            Image = userInfoJson?["picture"].ToString()
+            Image = userInfoJson?["picture"]?.ToString(),
+            EncryptedAccessToken = tokenResponse["access_token"].ToString(),
+            EncryptedRefreshToken = tokenResponse["refresh_token"]?.ToString(),
+            AccessTokenExpiresAt = expiresAt,
+            Scopes = string.Join(" ", tokenResponse["scope"] ?? Enumerable.Empty<string>()),
+            LastSyncAt = null,
+            IsActive = true
         };
+        
+        // Check if this GUID is already being tracked (shouldn't happen but let's be sure)
+        var existingEntry = db.ChangeTracker.Entries<Mailbox>()
+            .FirstOrDefault(e => e.Entity.Id == newMailboxId);
+        
+        if (existingEntry != null)
+        {
+            logger.LogError("GUID collision detected! Mailbox {MailboxId} already tracked with state {State}", 
+                newMailboxId, existingEntry.State);
+            return Results.Problem("Internal error: GUID collision");
+        }
+        
         profile.Mailboxes.Add(mailbox);
-        isNewMailbox = true;
+        
+        // Verify it's being tracked correctly
+        var addedEntry = db.Entry(mailbox);
+        logger.LogInformation("New mailbox state after adding to collection: {State}", addedEntry.State);
+        
+        // Force it to Added state if it's not
+        if (addedEntry.State != EntityState.Added)
+        {
+            logger.LogWarning("Mailbox was not in Added state, forcing to Added");
+            addedEntry.State = EntityState.Added;
+        }
+    }
+    else
+    {
+        // Update existing mailbox
+        logger.LogInformation("Updating existing mailbox {Email} with ID {MailboxId}", email, mailbox.Id);
+        mailbox.EncryptedAccessToken = tokenResponse["access_token"].ToString();
+        mailbox.EncryptedRefreshToken = tokenResponse["refresh_token"]?.ToString();
+        mailbox.AccessTokenExpiresAt = expiresAt;
+        mailbox.Scopes = string.Join(" ", tokenResponse["scope"] ?? Enumerable.Empty<string>());
+        mailbox.LastSyncAt = null;
+        mailbox.Image = userInfoJson?["picture"]?.ToString();
     }
 
-    mailbox.EncryptedAccessToken = tokenResponse["access_token"].ToString();
-    mailbox.EncryptedRefreshToken = tokenResponse["refresh_token"]?.ToString();
-    mailbox.AccessTokenExpiresAt = expiresAt;
-    mailbox.Scopes = string.Join(" ", tokenResponse["scope"] ?? Enumerable.Empty<string>());
-    mailbox.LastSyncAt = null;
-    await db.SaveChangesAsync();
+    // Log entity states before saving
+    logger.LogInformation("Entity states before save:");
+    foreach (var dbEntry in db.ChangeTracker.Entries())
+    {
+        var keyValue = dbEntry.Properties.FirstOrDefault(p => p.Metadata.IsKey())?.CurrentValue ?? "unknown";
+        logger.LogInformation("  {EntityType} ({KeyValue}): {State}", 
+            dbEntry.Metadata.Name, 
+            keyValue,
+            dbEntry.State);
+            
+        if (dbEntry.Entity is Mailbox mb)
+        {
+            logger.LogInformation("    Email: {Email}, Provider: {Provider}", mb.EmailAddress, mb.Provider);
+        }
+    }
 
-    // 6) Redirect to the frontend success page
+    try
+    {
+        logger.LogInformation("Saving changes to database");
+        await db.SaveChangesAsync();
+        logger.LogInformation("Successfully saved changes");
+    }
+    catch (DbUpdateConcurrencyException ex)
+    {
+        logger.LogError(ex, "Concurrency conflict. Affected entities:");
+        foreach (var dbEntry in ex.Entries)
+        {
+            logger.LogError("  Entity: {EntityType}, State: {State}, Key: {Key}", 
+                dbEntry.Metadata.Name,
+                dbEntry.State,
+                dbEntry.Properties.FirstOrDefault(p => p.Metadata.IsKey())?.CurrentValue);
+            
+            if (dbEntry.Entity is Mailbox mb)
+            {
+                logger.LogError("  Mailbox details - Email: {Email}, Provider: {Provider}", 
+                    mb.EmailAddress, mb.Provider);
+            }
+        }
+        return Results.Problem("Another process modified this record. Please retry.");
+    }
+
     var nextJsUrl = builder.Configuration["NextJs:BaseUrl"];
-    // res.Redirect($"{nextJsUrl}/auth/callback?email={Uri.EscapeDataString(email)}");
-
     return Results.Redirect($"{nextJsUrl}");
 });
 
@@ -519,10 +608,11 @@ app.MapGet("/search", async (HttpContext ctx, ILogger<Program> logger, AppDbCont
 
     logger.LogInformation("Looping over all inboxes to fetch emails up:{UserProfile}, mbs {Mailboxes}.",
         userProfile.ClerkUserId, mailboxes.Count);
+    
     foreach (var mailbox in mailboxes)
     {
         //OAuth
-        Console.WriteLine("Connecting to Gmail IMAP server");
+        logger.LogInformation("Connecting to Gmail IMAP server for email {EmailAddress}", mailbox.EmailAddress);
 
         var oauth2 = new SaslMechanismOAuthBearer(mailbox.EmailAddress, mailbox.EncryptedAccessToken);
 
@@ -624,7 +714,7 @@ app.MapGet("/search", async (HttpContext ctx, ILogger<Program> logger, AppDbCont
                     m.Envelope?.From.Mailboxes?.FirstOrDefault().Name ?? "Jane Doe",
                     m.Envelope?.From?.Mailboxes?.FirstOrDefault()?.Address ?? "unknown"
                 ],
-                To = m.Envelope?.To != null
+                To =  m.Envelope?.To != null
                     ? string.Join(", ", m.Envelope.To.Mailboxes.Select(mb => mb.Address))
                     : "unknown",
                 // Body = bodyPreview ?? "(No Content)",
