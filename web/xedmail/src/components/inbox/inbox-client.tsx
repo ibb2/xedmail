@@ -141,12 +141,12 @@ export default function InboxClient({ emails }: { emails: Email[] }) {
 
   // Keep local state in sync if parent prop changes
   useEffect(() => {
+    setLocalEmails(emails);
     if (!ran) {
-      setLocalEmails(emails);
       getMailboxes();
       setRan(true);
     }
-  }, [emails, ran, getMailboxes]);
+  }, [emails, ran]);
 
   return (
     <div className="flex flex-col items-center justify-center h-full">
