@@ -8,6 +8,7 @@ using MailKit.Security;
 using Microsoft.AspNetCore.Mvc;
 using Microsoft.AspNetCore.WebUtilities;
 using Microsoft.EntityFrameworkCore;
+using MimeKit;
 using Newtonsoft.Json.Linq;
 using xedmail.Authentication;
 using xedmail.Mail;
@@ -97,13 +98,13 @@ app.MapGet("/oauth/start", async (HttpRequest req, ILogger<Program> logger) =>
         ["prompt"] = "consent",
         ["state"] = state,
     };
-    
+
     string queryString = string.Join("&", urlParams
         .Select(kvp => $"{Uri.EscapeDataString(kvp.Key)}={Uri.EscapeDataString(kvp.Value)}"));
 
     var authUrl = $"https://accounts.google.com/o/oauth2/v2/auth?{queryString}";
-    
-    return Results.Ok(new {authUrl});
+
+    return Results.Ok(new { authUrl });
 });
 
 app.MapGet("/weatherforecast", () =>
@@ -225,12 +226,8 @@ app.MapGet("/weatherforecast", () =>
 
 app.MapGet("/oauth/callback", async (HttpRequest req, ILogger<Program> logger, AppDbContext db) =>
 {
-    // 1) Validate 'state' stored in session or DB (CSRF)
-    // 2) Validate Clerk session from Authorization header / cookie -> get clerkUserId
-    var userAuth = new UserAuthentication(); 
-    // var data = await userAuth.ValidateSessionAsync(req);
-    // var clerkUserId = data.UserId; 
-
+    var userAuth = new UserAuthentication();
+    
     var q = req.Query;
     string state = q["state"];
     string code = q["code"];
@@ -240,112 +237,206 @@ app.MapGet("/oauth/callback", async (HttpRequest req, ILogger<Program> logger, A
     if (!_stateStore.TryRemove(state, out var entry))
         return Results.BadRequest("Invalid or expired state");
 
-    // optional: check entry.CreatedAt not too old
-
     string clerkUserId = entry.ClerkUserId;
     string provider = entry.Provider;
-    
-    // 3) Exchange code for tokens with provider
+
     if (string.IsNullOrEmpty(code))
     {
         logger.LogWarning("OAuth callback received without authorization code");
         return Results.BadRequest("Missing code");
     }
-    
+
     using var http = new HttpClient();
-    
+
     var postData = new Dictionary<string, string>
     {
         ["code"] = code,
         ["client_id"] = builder.Configuration["Google:ClientId"]!,
         ["client_secret"] = builder.Configuration["Google:ClientSecret"]!,
-        ["redirect_uri"] = builder.Configuration["Google:RedirectUri"]!, 
+        ["redirect_uri"] = builder.Configuration["Google:RedirectUri"]!,
         ["grant_type"] = "authorization_code"
     };
-    
+
     logger.LogInformation("Exchanging authorization code for tokens");
-    
+
     var json = await http.PostAsync(
         "https://oauth2.googleapis.com/token",
         new FormUrlEncodedContent(postData));
-    
+
     if (!json.IsSuccessStatusCode)
     {
         var errorContent = await json.Content.ReadAsStringAsync();
-        logger.LogError("Token exchange failed. Status: {StatusCode}, Response: {Response}", 
+        logger.LogError("Token exchange failed. Status: {StatusCode}, Response: {Response}",
             json.StatusCode, errorContent);
         return Results.Problem("Failed to exchange authorization code");
     }
-    
+
     var tokenResponse = await json.Content.ReadFromJsonAsync<Dictionary<string, object>>();
-    
+
     if (tokenResponse == null)
     {
         logger.LogError("Failed to deserialize token response");
         return Results.Problem("Invalid token response");
     }
-    
-    // 4) Get the user's email from token / userinfo endpoint if possible
-    // Get user info
+
     var userInfoResponse = await http.GetAsync(
         $"https://www.googleapis.com/oauth2/v3/userinfo?access_token={tokenResponse["access_token"]}");
     var userInfoJson = await userInfoResponse.Content.ReadFromJsonAsync<Dictionary<string, object>>();
-    
+
     var email = userInfoJson?["email"]?.ToString();
     if (string.IsNullOrEmpty(email))
     {
         logger.LogError("Failed to get user email");
         return Results.Problem("Failed to get user information");
     }
-    
+
     logger.LogInformation("Successfully obtained OAuth tokens for {Email}", email);
-    
-    // Calculate expiry
+
     var expiresIn = int.Parse(tokenResponse["expires_in"].ToString()!);
     var expiresAt = DateTime.UtcNow.AddSeconds(expiresIn);
     logger.LogInformation("Token expiry: {ExpiresAt}", expiresAt);
 
-    // 5) Create or update UserProfile / Mailbox
-    // Check if user already exists
-// Check if user already exists
+    // Load or create profile with tracking
+    logger.LogInformation("Checking if user {ClerkUserId} already exists", clerkUserId);
     var profile = await db.UserProfiles
-        .Include(p => p.Mailboxes) // IMPORTANT: Load mailboxes
+        .Include(p => p.Mailboxes)
         .FirstOrDefaultAsync(p => p.ClerkUserId == clerkUserId);
 
-    bool isNewProfile = false;
     if (profile == null)
     {
-        profile = new UserProfile { ClerkUserId = clerkUserId };
-        db.UserProfiles.Add(profile); // Use Add() for new entities
-        isNewProfile = true;
+        // Create new profile
+        logger.LogInformation("Creating new profile for user {ClerkUserId}", clerkUserId);
+        profile = new UserProfile 
+        { 
+            ClerkUserId = clerkUserId 
+        };
+        db.UserProfiles.Add(profile);
     }
 
-    var mailbox = profile.Mailboxes.FirstOrDefault(m => m.EmailAddress == email && m.Provider == provider);
+    // Check if mailbox exists for this email and provider
+    logger.LogInformation("Checking if mailbox {Email} already exists", email);
+    
+    // IMPORTANT: Check both in-memory collection AND database
+    var mailbox = profile.Mailboxes
+        .FirstOrDefault(m => m.EmailAddress == email && m.Provider == provider);
+    
+    // Also check the change tracker for any detached/deleted mailboxes
+    var trackedMailbox = db.ChangeTracker.Entries<Mailbox>()
+        .FirstOrDefault(e => e.Entity.EmailAddress == email && e.Entity.Provider == provider);
+    
+    if (trackedMailbox != null)
+    {
+        logger.LogInformation("Found mailbox {Email} in change tracker with state {State}", 
+            email, trackedMailbox.State);
+        
+        if (trackedMailbox.State == EntityState.Deleted)
+        {
+            logger.LogWarning("Mailbox was marked as deleted, changing to Modified");
+            trackedMailbox.State = EntityState.Modified;
+            mailbox = trackedMailbox.Entity;
+        }
+    }
 
-    bool isNewMailbox = false;
     if (mailbox == null)
     {
-        mailbox = new Mailbox 
-        { 
-            Id = Guid.NewGuid(), 
-            Provider = provider, 
-            EmailAddress = email 
+        // Create new mailbox
+        logger.LogInformation("Creating new mailbox {Email}", email);
+        
+        var newMailboxId = Guid.NewGuid();
+        logger.LogInformation("Generated new mailbox ID: {MailboxId}", newMailboxId);
+        
+        mailbox = new Mailbox
+        {
+            Id = newMailboxId,
+            Provider = provider,
+            EmailAddress = email,
+            Image = userInfoJson?["picture"]?.ToString(),
+            EncryptedAccessToken = tokenResponse["access_token"].ToString(),
+            EncryptedRefreshToken = tokenResponse["refresh_token"]?.ToString(),
+            AccessTokenExpiresAt = expiresAt,
+            Scopes = string.Join(" ", tokenResponse["scope"] ?? Enumerable.Empty<string>()),
+            LastSyncAt = null,
+            IsActive = true
         };
+        
+        // Check if this GUID is already being tracked (shouldn't happen but let's be sure)
+        var existingEntry = db.ChangeTracker.Entries<Mailbox>()
+            .FirstOrDefault(e => e.Entity.Id == newMailboxId);
+        
+        if (existingEntry != null)
+        {
+            logger.LogError("GUID collision detected! Mailbox {MailboxId} already tracked with state {State}", 
+                newMailboxId, existingEntry.State);
+            return Results.Problem("Internal error: GUID collision");
+        }
+        
         profile.Mailboxes.Add(mailbox);
-        isNewMailbox = true;
+        
+        // Verify it's being tracked correctly
+        var addedEntry = db.Entry(mailbox);
+        logger.LogInformation("New mailbox state after adding to collection: {State}", addedEntry.State);
+        
+        // Force it to Added state if it's not
+        if (addedEntry.State != EntityState.Added)
+        {
+            logger.LogWarning("Mailbox was not in Added state, forcing to Added");
+            addedEntry.State = EntityState.Added;
+        }
+    }
+    else
+    {
+        // Update existing mailbox
+        logger.LogInformation("Updating existing mailbox {Email} with ID {MailboxId}", email, mailbox.Id);
+        mailbox.EncryptedAccessToken = tokenResponse["access_token"].ToString();
+        mailbox.EncryptedRefreshToken = tokenResponse["refresh_token"]?.ToString();
+        mailbox.AccessTokenExpiresAt = expiresAt;
+        mailbox.Scopes = string.Join(" ", tokenResponse["scope"] ?? Enumerable.Empty<string>());
+        mailbox.LastSyncAt = null;
+        mailbox.Image = userInfoJson?["picture"]?.ToString();
     }
 
-    mailbox.EncryptedAccessToken = tokenResponse["access_token"].ToString();
-    mailbox.EncryptedRefreshToken = tokenResponse["refresh_token"]?.ToString();
-    mailbox.AccessTokenExpiresAt = expiresAt;
-    mailbox.Scopes = string.Join(" ", tokenResponse["scope"] ?? Enumerable.Empty<string>());
-    mailbox.LastSyncAt = null;
-    await db.SaveChangesAsync();
+    // Log entity states before saving
+    logger.LogInformation("Entity states before save:");
+    foreach (var dbEntry in db.ChangeTracker.Entries())
+    {
+        var keyValue = dbEntry.Properties.FirstOrDefault(p => p.Metadata.IsKey())?.CurrentValue ?? "unknown";
+        logger.LogInformation("  {EntityType} ({KeyValue}): {State}", 
+            dbEntry.Metadata.Name, 
+            keyValue,
+            dbEntry.State);
+            
+        if (dbEntry.Entity is Mailbox mb)
+        {
+            logger.LogInformation("    Email: {Email}, Provider: {Provider}", mb.EmailAddress, mb.Provider);
+        }
+    }
 
-    // 6) Redirect to the frontend success page
+    try
+    {
+        logger.LogInformation("Saving changes to database");
+        await db.SaveChangesAsync();
+        logger.LogInformation("Successfully saved changes");
+    }
+    catch (DbUpdateConcurrencyException ex)
+    {
+        logger.LogError(ex, "Concurrency conflict. Affected entities:");
+        foreach (var dbEntry in ex.Entries)
+        {
+            logger.LogError("  Entity: {EntityType}, State: {State}, Key: {Key}", 
+                dbEntry.Metadata.Name,
+                dbEntry.State,
+                dbEntry.Properties.FirstOrDefault(p => p.Metadata.IsKey())?.CurrentValue);
+            
+            if (dbEntry.Entity is Mailbox mb)
+            {
+                logger.LogError("  Mailbox details - Email: {Email}, Provider: {Provider}", 
+                    mb.EmailAddress, mb.Provider);
+            }
+        }
+        return Results.Problem("Another process modified this record. Please retry.");
+    }
+
     var nextJsUrl = builder.Configuration["NextJs:BaseUrl"];
-    // res.Redirect($"{nextJsUrl}/auth/callback?email={Uri.EscapeDataString(email)}");
-
     return Results.Redirect($"{nextJsUrl}");
 });
 
@@ -353,12 +444,12 @@ app.MapGet("/oauth/callback", async (HttpRequest req, ILogger<Program> logger, A
 app.MapGet("/api/tokens", (HttpContext ctx) =>
 {
     var accessToken = ctx.Session.GetString("google_access_token");
-    
+
     if (string.IsNullOrEmpty(accessToken))
         return Results.Unauthorized();
-    
-    return Results.Ok(new 
-    { 
+
+    return Results.Ok(new
+    {
         access_token = accessToken,
         refresh_token = ctx.Session.GetString("google_refresh_token")
     });
@@ -378,22 +469,22 @@ app.MapGet("/api/inbox/all", async (
         logger.LogWarning("No email provided");
         return Results.BadRequest("Email required");
     }
-    
+
     var userToken = await db.UserTokens.FirstOrDefaultAsync(t => t.Email == email);
-    
+
     if (userToken == null)
     {
         logger.LogWarning("No token found for {Email}", email);
         return Results.NotFound("User not authenticated with Google");
     }
-    
+
     // Check if token is expired
     if (userToken.ExpiresAt <= DateTime.UtcNow)
     {
         logger.LogWarning("Access token expired for {Email}", email);
-        
+
         using var http = new HttpClient();
-        
+
         var data = new Dictionary<string, string>
         {
             ["refresh_token"] = userToken.RefreshToken!,
@@ -402,224 +493,479 @@ app.MapGet("/api/inbox/all", async (
             ["grant_type"] = "refresh_token"
         };
 
-        var accessTokenData = await http.PostAsync("https://oauth2.googleapis.com/token", new FormUrlEncodedContent(data));
+        var accessTokenData =
+            await http.PostAsync("https://oauth2.googleapis.com/token", new FormUrlEncodedContent(data));
         var refreshedAccessToken = await accessTokenData.Content.ReadFromJsonAsync<Dictionary<string, object>>();
-        
+
         if (refreshedAccessToken == null)
             return Results.Problem("Failed to refresh access token");
-        
-        logger.LogInformation("Refreshed access token for {Email}, {refreshedAccessToken}", email, refreshedAccessToken);
+
+        logger.LogInformation("Refreshed access token for {Email}, {refreshedAccessToken}", email,
+            refreshedAccessToken);
         userToken.AccessToken = refreshedAccessToken["access_token"].ToString()!;
         userToken.ExpiresAt = DateTime.UtcNow.AddSeconds(int.Parse(refreshedAccessToken["expires_in"].ToString()!));
         userToken.UpdatedAt = DateTime.UtcNow;
         await db.SaveChangesAsync();
-        
+
         return Results.Problem("Access token expired. Please re-authenticate.");
     }
-    
+
     logger.LogInformation("Fetching inbox for {Email}", email);
-    
+
     MailClient mailClient = new();
     await mailClient.Connect(userToken.Email, userToken.AccessToken);
     var messages = await mailClient.GetInbox();
-    
+
     logger.LogInformation("Got {Count} messages for {Email}", messages.Count, email);
-    
+
     var emailDtos = messages.Select(m => new EmailDto
     {
         Id = m.MessageId ?? Guid.NewGuid().ToString(),
         Subject = m.Subject ?? "(No Subject)",
-        From = m.From.Mailboxes.FirstOrDefault()?.Address ?? "unknown",
+        From = [m.From.Mailboxes.FirstOrDefault()?.Name ?? "Jane Doe" ,m.From.Mailboxes.FirstOrDefault()?.Address ?? "unknown"],
         To = string.Join(", ", m.To.Mailboxes.Select(mb => mb.Address)),
         Body = m.HtmlBody ?? m.TextBody ?? "(No Content)",
         Date = m.Date.UtcDateTime,
         IsRead = false // You'll need to get this from IMAP flags if available
     }).ToList();
-    
+
     return Results.Ok(emailDtos);
 });
 
-app.MapGet("/api/search", async (HttpContext ctx, ILogger<Program> logger, AppDbContext db, string email, string query) =>
+app.MapGet("/search", async (HttpContext ctx, ILogger<Program> logger, AppDbContext db, [FromQuery] string query) =>
 {
-    
-    logger.LogInformation("Searching for {Query} from {Email}", query, email);
-    
+    var startTime = DateTime.UtcNow;
+    // Verify user request and get their unique id
+    logger.LogInformation("Searching for {Query}", query);
+    var request = ctx.Request;
+    var userAuth = new UserAuthentication();
+    var clerkValidationInfo = await userAuth.ValidateSessionAsync(request);
+
+    if (!clerkValidationInfo.IsSignedIn)
+    {
+        return Results.Unauthorized();
+    }
+
+    var userClerkId = clerkValidationInfo.UserId;
+
+    // Create and hold a reference to the HTTP client
     using var http = new HttpClient();
 
-    // Database
-    var userToken = await db.UserTokens.FirstOrDefaultAsync(t => t.Email == email);
-    
-    if (userToken == null)
+    // Retrieve all inboxes for the user
+    var userProfile = await db.UserProfiles
+        .Include(p => p.Mailboxes)
+        .FirstOrDefaultAsync(p => p.ClerkUserId == userClerkId);
+
+    if (userProfile == null)
     {
-        logger.LogWarning("No token found for {Email}", email);
-        return Results.NotFound("User not authenticated with Google");
+        return Results.NotFound($"User profile not found for id {userClerkId}");
     }
-    
-    // Check if token is expired
-    if (userToken.ExpiresAt <= DateTime.UtcNow)
+
+    var inboxes = userProfile.Mailboxes;
+
+    // Check if the tokens are expired. If so, refresh them
+    if (userProfile.Mailboxes.Any(m => m.AccessTokenExpiresAt < DateTime.UtcNow))
     {
-        logger.LogWarning("Access token expired for {Email}", email);
-        
-        var data = new Dictionary<string, string>
+        logger.LogWarning("Access token expired for one or more of {ClerkId}'s inboxes", userClerkId);
+
+        var mailboxesWithExpiredTokens =
+            userProfile.Mailboxes.Where(m => m.AccessTokenExpiresAt < DateTime.UtcNow).ToList();
+
+        foreach (var mailbox in mailboxesWithExpiredTokens)
         {
-            ["refresh_token"] = userToken.RefreshToken!,
-            ["client_id"] = builder.Configuration["Google:ClientId"]!,
-            ["client_secret"] = builder.Configuration["Google:ClientSecret"]!,
-            ["grant_type"] = "refresh_token"
-        };
+            var data = new Dictionary<string, string>
+            {
+                ["refresh_token"] = mailbox.EncryptedRefreshToken!,
+                ["client_id"] = builder.Configuration["Google:ClientId"]!,
+                ["client_secret"] = builder.Configuration["Google:ClientSecret"]!,
+                ["grant_type"] = "refresh_token"
+            };
 
-        var accessTokenData = await http.PostAsync("https://oauth2.googleapis.com/token", new FormUrlEncodedContent(data));
-        var refreshedAccessToken = await accessTokenData.Content.ReadFromJsonAsync<Dictionary<string, object>>();
-        
-        if (refreshedAccessToken == null)
-            return Results.Problem("Failed to refresh access token");
-        
-        logger.LogInformation("Refreshed access token for {Email}, {refreshedAccessToken}", email, refreshedAccessToken);
-        userToken.AccessToken = refreshedAccessToken["access_token"].ToString()!;
-        userToken.ExpiresAt = DateTime.UtcNow.AddSeconds(int.Parse(refreshedAccessToken["expires_in"].ToString()!));
-        userToken.UpdatedAt = DateTime.UtcNow;
-        await db.SaveChangesAsync();
-        
-        return Results.Problem("Access token expired. Please re-authenticate.");
+            var accessTokenData = await http.PostAsync("https://oauth2.googleapis.com/token",
+                new FormUrlEncodedContent(data));
+            var refreshedAccessToken =
+                await accessTokenData.Content.ReadFromJsonAsync<Dictionary<string, object>>();
+
+            if (refreshedAccessToken == null)
+                return Results.Problem("Failed to refresh access token");
+
+            logger.LogInformation("Refreshed access token for {DisplayName}, {refreshedAccessToken}",
+                mailbox.UserProfile.DisplayName,
+                refreshedAccessToken);
+            mailbox.EncryptedAccessToken = refreshedAccessToken["access_token"].ToString()!;
+            mailbox.AccessTokenExpiresAt =
+                DateTime.UtcNow.AddSeconds(int.Parse(refreshedAccessToken["expires_in"].ToString()!));
+            await db.SaveChangesAsync();
+        }
     }
-    
-    //OAuth
-    Console.WriteLine("Connecting to Gmail IMAP server");
-    Console.WriteLine($"Email: {email}");
-    
-    var oauth2 = new SaslMechanismOAuthBearer(email, userToken.AccessToken);
-    
-    using var client = new ImapClient();
 
-    await client.ConnectAsync("imap.gmail.com", 993, SecureSocketOptions.SslOnConnect);
-    await client.AuthenticateAsync(oauth2);
-    
-    var inbox = client.Inbox;
-    await inbox.OpenAsync(FolderAccess.ReadOnly);
-    
-    logger.LogInformation("Connected to Gmail IMAP server");
-    logger.LogInformation("Parsing search query");
+    // Fetch the emails for each inbox
+    // Database
+    logger.LogInformation("Fetching emails for {ClerkId}'s inboxes", userClerkId);
+    var mailboxes = userProfile.Mailboxes.ToList();
 
-    var results = await http.PostAsJsonAsync("http://127.0.0.1:8000/parse", new {query} );
-    var json = await results.Content.ReadAsStringAsync();
-    
-    logger.LogInformation("Parsed search query & Got search results: {Results}", json);
-    
-    var parsed = JObject.Parse(json);  
-    var filters = parsed["filters"];
-    
-    SearchQuery search = SearchQuery.All;
+    var emails = new List<EmailDto>();
 
-    // Apply status filter
-    if (filters?["status"]?.ToString() == "unread")
-        search.And(SearchQuery.NotSeen);
-    else if (filters?["status"]?.ToString() == "read")
-        search.And(SearchQuery.Seen);
-
-    // Apply date filter
-    var today = DateTime.UtcNow.Date;
-    if (filters?["date"]?.ToString() == "today")
-        search = search.And(SearchQuery.DeliveredOn(today));
-    else if (filters?["date"]?.ToString() == "yesterday")
-        search = search.And(SearchQuery.DeliveredOn(today.AddDays(-1)));
-
-    // Apply sender filter
-    if (filters?["from"] != null)
+    logger.LogInformation("Looping over all inboxes to fetch emails up:{UserProfile}, mbs {Mailboxes}.",
+        userProfile.ClerkUserId, mailboxes.Count);
+    
+    foreach (var mailbox in mailboxes)
     {
-        var sender = filters["from"]!.ToString();
-        search = search.And(SearchQuery.FromContains(sender));
-    }
-    
-    var searchResults = await inbox.SearchAsync(search);
-    var infoRaw = await inbox.FetchAsync(searchResults, MessageSummaryItems.Full | MessageSummaryItems.UniqueId);
-    var info = infoRaw.Reverse().ToList();
-    var trimmedSearchResults = searchResults.TakeLast(20).Reverse();
-    var messages = trimmedSearchResults.Select(x => inbox.GetMessage(x)).ToList();
-    
-    logger.LogInformation("Got {Count} messages", messages.Count);
-    
-    var emailDto = messages.Select((m, index) => new EmailDto{
-        Id = m.MessageId ?? Guid.NewGuid().ToString(),
-        Uid = info[index].UniqueId.ToString(),
-        Subject = m.Subject ?? "(No Subject)",
-        From = m.From.Mailboxes.FirstOrDefault()?.Address ?? "unknown",
-        To = string.Join(", ", m.To.Mailboxes.Select(mb => mb.Address)),
-        Body = m.HtmlBody ?? m.TextBody ?? "(No Content)",
-        Date = m.Date.UtcDateTime,
-        IsRead = info[index].Flags!.Value.HasFlag(MessageFlags.Seen)});
+        //OAuth
+        logger.LogInformation("Connecting to Gmail IMAP server for email {EmailAddress}", mailbox.EmailAddress);
 
-    await client.DisconnectAsync(true);
-    
-    // logger.LogInformation("Got search results: {Results}", json);
-    
-    return Results.Ok(emailDto);
+        var oauth2 = new SaslMechanismOAuthBearer(mailbox.EmailAddress, mailbox.EncryptedAccessToken);
+
+        using var client = new ImapClient();
+
+        await client.ConnectAsync("imap.gmail.com", 993, SecureSocketOptions.SslOnConnect);
+        await client.AuthenticateAsync(oauth2);
+
+        var inbox = client.Inbox;
+        await inbox.OpenAsync(FolderAccess.ReadOnly);
+
+        logger.LogInformation("Connected to Gmail IMAP server");
+        logger.LogInformation("Parsing search query");
+
+        var results = await http.PostAsJsonAsync("http://127.0.0.1:8000/parse", new { query });
+        var json = await results.Content.ReadAsStringAsync();
+
+        logger.LogInformation("Parsed search query & Got search results: {Results}", json);
+
+        var parsed = JObject.Parse(json);
+        var filters = parsed["filters"];
+
+        SearchQuery search = SearchQuery.All;
+
+        // Apply status filter
+        if (filters?["status"]?.ToString() == "unread")
+            search.And(SearchQuery.NotSeen);
+        else if (filters?["status"]?.ToString() == "read")
+            search.And(SearchQuery.Seen);
+
+        // Apply date filter
+        var today = DateTime.UtcNow.Date;
+        if (filters?["date"]?.ToString() == "today")
+            search = search.And(SearchQuery.DeliveredOn(today));
+        else if (filters?["date"]?.ToString() == "yesterday")
+            search = search.And(SearchQuery.DeliveredOn(today.AddDays(-1)));
+
+        // Apply sender filter
+        if (filters?["from"] != null)
+        {
+            var sender = filters["from"]!.ToString();
+            search = search.And(SearchQuery.FromContains(sender));
+        }
+
+        var searchResults = await inbox.SearchAsync(search);
+        var twentySearchResults = searchResults.ToList();
+        var messageSummaries = await inbox.FetchAsync(
+            twentySearchResults,
+            MessageSummaryItems.Envelope |
+            MessageSummaryItems.GMailMessageId |
+            MessageSummaryItems.UniqueId |
+            MessageSummaryItems.Flags |
+            MessageSummaryItems.BodyStructure
+        );
+        var messagesSummariesInfoList = messageSummaries.Reverse().ToList();
+        // var trimmedSearchResults = searchResults.TakeLast(20).Reverse();
+        // var messages = trimmedSearchResults.Select(x => inbox.GetMessage(x)).ToList();
+
+        logger.LogInformation("Got {Count} messages", messageSummaries.Count);
+
+        // We already have messageSummaries and messagesSummariesInfoList (both reversed)
+        var summariesList = messageSummaries.Reverse().ToList();
+        var infoList = messagesSummariesInfoList; // Already reversed above
+
+        var emailsForMailbox = new List<EmailDto>();
+
+        foreach (var (m, index) in summariesList.Select((m, i) => (m, i)))
+        {
+            var info = index < infoList.Count ? infoList[index] : null;
+            // string? bodyPreview = null;
+            //
+            // var textPart = m.TextBody ?? m.HtmlBody;
+            // if (textPart != null)
+            // {
+            //     try
+            //     {
+            //         // Fetch one at a time to avoid concurrency
+            //         var bodyPart = await inbox.GetBodyPartAsync(m.UniqueId, textPart);
+            //
+            //         if (bodyPart is TextPart textPartContent)
+            //         {
+            //             var text = textPartContent.Text;
+            //             bodyPreview = text.Length > 500 ? text[..500] + "..." : text;
+            //         }
+            //     }
+            //     catch (Exception ex)
+            //     {
+            //         logger.LogWarning(ex, "Failed to fetch body preview for message {Id}", m.GMailMessageId);
+            //     }
+            // }
+
+            emailsForMailbox.Add(new EmailDto
+            {
+                Id = m.GMailMessageId?.ToString() ?? Guid.NewGuid().ToString(),
+                Uid = info?.UniqueId.Id.ToString() ?? Guid.NewGuid().ToString(),
+                Subject = m.NormalizedSubject ?? "(No Subject)",
+                From =
+                [
+                    m.Envelope?.From.Mailboxes?.FirstOrDefault().Name ?? "Jane Doe",
+                    m.Envelope?.From?.Mailboxes?.FirstOrDefault()?.Address ?? "unknown"
+                ],
+                To =  m.Envelope?.To != null
+                    ? string.Join(", ", m.Envelope.To.Mailboxes.Select(mb => mb.Address))
+                    : "unknown",
+                // Body = bodyPreview ?? "(No Content)",
+                Date = m.Date != default ? m.Date.UtcDateTime : DateTime.UtcNow,
+                IsRead = info?.Flags?.HasFlag(MessageFlags.Seen) ?? false
+            });
+        }
+
+        emails.AddRange(emailsForMailbox);
+
+        await client.DisconnectAsync(true);
+    }
+
+    var endTime = DateTime.UtcNow;
+
+    logger.LogInformation("Fetched emails for {ClerkId}'s inboxes in {ElapsedMinutes}m and {ElapsedSeconds}s",
+        userClerkId, (endTime - startTime).TotalMinutes, (endTime - startTime).TotalSeconds);
+
+    return Results.Ok(emails);
 });
 
-app.MapPatch("/api/emails/{uid}", async (HttpContext ctx, ILogger<Program> logger, AppDbContext db, string uid, string email, bool isRead) =>
-{
-    logger.LogInformation("Email {Uid} Read status is {IsRead} for {email}", uid, isRead, email);
-    
-    // Database
-    var userToken = await db.UserTokens.FirstOrDefaultAsync(t => t.Email == email);
-    
-    using var http = new HttpClient();
-    
-    if (userToken == null)
+app.MapGet("/emails/{emailId}",
+    async (HttpContext ctx, ILogger<Program> logger, AppDbContext db, string emailId, [FromQuery(Name = "query")] string emailAddress) =>
     {
-        logger.LogWarning("No token found for {Email}", email);
-        return Results.NotFound("User not authenticated with Google");
-    }
-    
-    // Check if token is expired
-    if (userToken.ExpiresAt <= DateTime.UtcNow)
-    {
-        logger.LogWarning("Access token expired for {Email}", email);
+        logger.LogInformation("Connecting {Email}'s inbox", emailAddress);
+        // Get an email's body 
         
-        var data = new Dictionary<string, string>
+        // Verify user request and get their unique id
+        var request = ctx.Request;
+        var userAuth = new UserAuthentication();
+        var clerkValidationInfo = await userAuth.ValidateSessionAsync(request);
+        
+        logger.LogInformation("1 {IsSignedIn} {UserId}", clerkValidationInfo.IsSignedIn, clerkValidationInfo.UserId);
+
+        if (!clerkValidationInfo.IsSignedIn)
         {
-            ["refresh_token"] = userToken.RefreshToken!,
-            ["client_id"] = builder.Configuration["Google:ClientId"]!,
-            ["client_secret"] = builder.Configuration["Google:ClientSecret"]!,
-            ["grant_type"] = "refresh_token"
+            return Results.Unauthorized();
+        }
+        
+        logger.LogInformation("2");
+        
+        var userClerkId = clerkValidationInfo.UserId;
+        
+        // Create and hold a reference to the HTTP client
+        using var http = new HttpClient();
+        
+        // Retrieve all inboxes for the user
+        var userProfile = await db.UserProfiles
+            .Include(p => p.Mailboxes)
+            .FirstOrDefaultAsync(p => p.ClerkUserId == userClerkId);
+        
+        if (userProfile == null)
+        {
+            return Results.NotFound($"User profile not found for id {userClerkId}");
+        }
+        
+        var mailbox = userProfile.Mailboxes.Find(m => m.EmailAddress == emailAddress);
+        
+        if (mailbox == null)
+        {
+            return Results.NotFound($"Inbox not found for email address {emailAddress}");
+        }
+        
+        // Check if the tokens are expired. If so, refresh them
+        if (mailbox.AccessTokenExpiresAt < DateTime.UtcNow)
+        {
+            logger.LogWarning("Access token expired for mailbox");
+        
+            var data = new Dictionary<string, string>
+            {
+                ["refresh_token"] = mailbox.EncryptedRefreshToken!,
+                ["client_id"] = builder.Configuration["Google:ClientId"]!,
+                ["client_secret"] = builder.Configuration["Google:ClientSecret"]!,
+                ["grant_type"] = "refresh_token"
+            };
+        
+            var accessTokenData = await http.PostAsync("https://oauth2.googleapis.com/token",
+                new FormUrlEncodedContent(data));
+            var refreshedAccessToken =
+                await accessTokenData.Content.ReadFromJsonAsync<Dictionary<string, object>>();
+        
+            if (refreshedAccessToken == null)
+                return Results.Problem("Failed to refresh access token");
+        
+            logger.LogInformation("Refreshed access token for {DisplayName}, {refreshedAccessToken}",
+                mailbox.UserProfile.DisplayName,
+                refreshedAccessToken);
+            mailbox.EncryptedAccessToken = refreshedAccessToken["access_token"].ToString()!;
+            mailbox.AccessTokenExpiresAt =
+                DateTime.UtcNow.AddSeconds(int.Parse(refreshedAccessToken["expires_in"].ToString()!));
+            await db.SaveChangesAsync();
+        }
+        
+        // Fetch the emails for each inbox
+        // Database
+        logger.LogInformation("Fetching emails from {EmailAddress} inbox", emailAddress);
+        
+        //OAuth
+        Console.WriteLine("Connecting to Gmail IMAP server");
+        
+        var oauth2 = new SaslMechanismOAuthBearer(mailbox.EmailAddress, mailbox.EncryptedAccessToken);
+        
+        using var client = new ImapClient();
+        
+        await client.ConnectAsync("imap.gmail.com", 993, SecureSocketOptions.SslOnConnect);
+        await client.AuthenticateAsync(oauth2);
+        
+        var inbox = client.Inbox;
+        await inbox.OpenAsync(FolderAccess.ReadOnly);
+        
+        logger.LogInformation("Connected to Gmail IMAP server");
+        
+        var message = inbox.GetMessage(UniqueId.Parse(emailId));
+        var searchResult = await inbox.SearchAsync(SearchQuery.HeaderContains("Message-ID", message.MessageId));
+        logger.LogInformation("Got search result: {SearchResult}", searchResult);
+        var messageSummary = await inbox.FetchAsync(
+            searchResult,
+            MessageSummaryItems.Envelope |
+            MessageSummaryItems.GMailMessageId |
+            MessageSummaryItems.UniqueId |
+            MessageSummaryItems.Flags |
+            MessageSummaryItems.BodyStructure
+        );
+        logger.LogInformation("Got {Count} messages", messageSummary.Count);
+        var messageSummaryInfo = messageSummary.FirstOrDefault();
+            
+        var email = new EmailDto
+        {
+            Id = messageSummaryInfo?.GMailMessageId.ToString() ?? Guid.NewGuid().ToString(),
+            Uid = messageSummaryInfo?.UniqueId.Id.ToString() ?? Guid.NewGuid().ToString(),
+            Subject = message.Subject ?? "(No Subject)",
+            From =
+            [
+                messageSummaryInfo?.Envelope?.From?.Mailboxes?.FirstOrDefault()?.Name ?? "Jane Doe",
+                messageSummaryInfo?.Envelope?.From?.Mailboxes?.FirstOrDefault()?.Address ?? "unknown"
+            ],
+            To = messageSummaryInfo?.Envelope?.To != null
+                ? string.Join(", ", messageSummaryInfo.Envelope.To.Mailboxes.Select(mb => mb.Address))
+                : "unknown",
+            Body = message.HtmlBody ?? message.TextBody ?? "(No Content)",
+            Date = messageSummaryInfo != null && messageSummaryInfo.Date != default ? messageSummaryInfo.Date.UtcDateTime : DateTime.UtcNow,
+            IsRead = messageSummaryInfo?.Flags?.HasFlag(MessageFlags.Seen) ?? false
         };
+        
+        logger.LogInformation("Got email: {Email}", email.Subject);
+        
+        await client.DisconnectAsync(true);
+        
+        return Results.Ok(email);
+    });
 
-        var accessTokenData = await http.PostAsync("https://oauth2.googleapis.com/token", new FormUrlEncodedContent(data));
-        var refreshedAccessToken = await accessTokenData.Content.ReadFromJsonAsync<Dictionary<string, object>>();
+app.MapPatch("/emails/{email}/{uid}",
+    async (HttpContext ctx, ILogger<Program> logger, AppDbContext db, string email, string uid, bool isRead) =>
+    {
+        // Verify user request and get their unique id
+        var userAuth = new UserAuthentication();
+        var clerkValidationInfo = await userAuth.ValidateSessionAsync(ctx.Request);
+
+        if (!clerkValidationInfo.IsSignedIn)
+        {
+            return Results.Unauthorized();
+        }
         
-        if (refreshedAccessToken == null)
-            return Results.Problem("Failed to refresh access token");
-        
-        logger.LogInformation("Refreshed access token for {Email}, {refreshedAccessToken}", email, refreshedAccessToken);
-        userToken.AccessToken = refreshedAccessToken["access_token"].ToString()!;
-        userToken.ExpiresAt = DateTime.UtcNow.AddSeconds(int.Parse(refreshedAccessToken["expires_in"].ToString()!));
-        userToken.UpdatedAt = DateTime.UtcNow;
-        await db.SaveChangesAsync();
-        
-        return Results.Problem("Access token expired. Please re-authenticate.");
+        logger.LogInformation("Email {Uid} Read status is {IsRead} for {email}", uid, isRead, email);
+
+        // Database
+        var userProfile = await db.UserProfiles.Include(p => p.Mailboxes)
+            .FirstOrDefaultAsync(p => p.ClerkUserId == clerkValidationInfo.UserId);
+        var mailbox = userProfile?.Mailboxes.Find(m => m.EmailAddress == email);
+
+        using var http = new HttpClient();
+
+        // Check if the access token is expired
+        if (mailbox?.AccessTokenExpiresAt <= DateTime.UtcNow)
+        {
+            logger.LogWarning("Access token expired for {Email}", email);
+
+            var data = new Dictionary<string, string>
+            {
+                ["refresh_token"] = mailbox.EncryptedRefreshToken!,
+                ["client_id"] = builder.Configuration["Google:ClientId"]!,
+                ["client_secret"] = builder.Configuration["Google:ClientSecret"]!,
+                ["grant_type"] = "refresh_token"
+            };
+
+            var accessTokenData =
+                await http.PostAsync("https://oauth2.googleapis.com/token", new FormUrlEncodedContent(data));
+            var refreshedAccessToken = await accessTokenData.Content.ReadFromJsonAsync<Dictionary<string, object>>();
+
+            if (refreshedAccessToken == null)
+                return Results.Problem("Failed to refresh access token");
+
+            logger.LogInformation("Refreshed access token for {Email}, {refreshedAccessToken}", email,
+                refreshedAccessToken);
+            mailbox.EncryptedAccessToken = refreshedAccessToken["access_token"].ToString()!;
+            mailbox.AccessTokenExpiresAt = DateTime.UtcNow.AddSeconds(int.Parse(refreshedAccessToken["expires_in"].ToString()!));
+            await db.SaveChangesAsync();
+
+            return Results.Problem("Access token expired. Please re-authenticate.");
+        }
+
+        using var client = new ImapClient();
+        await client.ConnectAsync("imap.gmail.com", 993, SecureSocketOptions.SslOnConnect);
+        var oauth2 = new SaslMechanismOAuthBearer(email, mailbox.EncryptedAccessToken);
+        await client.AuthenticateAsync(oauth2);
+
+        var inbox = client.Inbox;
+        inbox.Open(FolderAccess.ReadWrite);
+
+        var emailUid = UniqueId.Parse(uid);
+        var message = await inbox.GetMessageAsync(emailUid);
+
+        if (message == null) return Results.Problem("Message not found");
+
+        if (!isRead)
+            await inbox.AddFlagsAsync(emailUid, MessageFlags.Seen, true);
+        else
+            await inbox.RemoveFlagsAsync(emailUid, MessageFlags.Seen, true);
+        logger.LogInformation("Marking email {Uid} as {IsRead} for {email}", uid, !isRead, email);
+
+        await client.DisconnectAsync(true);
+
+        return Results.NoContent();
+    });
+
+
+// Mailboxes
+
+app.MapGet("/mailboxes", async (HttpContext ctx, ILogger<Program> logger, AppDbContext db) =>
+{
+    // Get all mailboxes for the user
+    
+    logger.LogInformation("Getting mailboxes");
+    // Verify user request and get their unique id
+    var userAuth = new UserAuthentication();
+    var clerkValidationInfo = await userAuth.ValidateSessionAsync(ctx.Request);
+
+    if (!clerkValidationInfo.IsSignedIn)
+    {
+        return Results.Unauthorized();
     }
-
-    using var client = new ImapClient();
-    await client.ConnectAsync("imap.gmail.com", 993, SecureSocketOptions.SslOnConnect);
-    var oauth2 = new SaslMechanismOAuthBearer(email, userToken.AccessToken);
-    await client.AuthenticateAsync(oauth2);
-
-    var inbox = client.Inbox;
-    inbox.Open(FolderAccess.ReadWrite);
-
-    var emailUid = MailKit.UniqueId.Parse(uid);
-    var message = await inbox.GetMessageAsync(emailUid);
     
-    if (message == null) return Results.Problem("Message not found");
-    
-    if (!isRead)
-        await inbox.AddFlagsAsync(emailUid, MessageFlags.Seen, true);
-    else
-        await inbox.RemoveFlagsAsync(emailUid, MessageFlags.Seen, true);
-    logger.LogInformation("Marking email {Uid} as {IsRead} for {email}", uid, !isRead, email);
-    
-    await client.DisconnectAsync(true);
+    // Get all mailboxes for the user from the database
+    var userProfile = await db.UserProfiles.Include(p => p.Mailboxes).FirstOrDefaultAsync(p => p.ClerkUserId == clerkValidationInfo.UserId);
 
-    return Results.NoContent();
+
+    var mailboxes = userProfile?.Mailboxes.Select(m => new MailboxDto
+        { Id = m.Id.ToString(), EmailAddress = m.EmailAddress, Image = m.Image }
+    );
+    
+    return userProfile == null ? Results.NotFound($"No mailboxes found for userProfile {clerkValidationInfo.UserId}") : Results.Ok(mailboxes);
 });
 
 app.Run();
@@ -637,13 +983,21 @@ public partial record OAuthStateEntry
     public DateTime Timestamp { get; set; }
 }
 
+public class MailboxDto
+{
+    public string Id { get; set; }
+    public string EmailAddress { get; set; }
+    public string Image { get; set; }
+    
+}
+
 // Add this class to your Program.cs
 public class EmailDto
 {
     public string Id { get; set; } = string.Empty;
     public string Uid { get; set; } = string.Empty;
     public string Subject { get; set; } = string.Empty;
-    public string From { get; set; } = string.Empty;
+    public string[]? From { get; set; } = [];
     public string? To { get; set; }
     public string? Body { get; set; }
     public DateTime Date { get; set; }

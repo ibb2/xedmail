@@ -1,3 +1,4 @@
+"use client";
 import InboxClient from "@/components/inbox/inbox-client";
 import {
   Card,
@@ -14,28 +15,49 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "@/components/ui/dialog";
+import { useAuth } from "@clerk/nextjs";
 import { currentUser } from "@clerk/nextjs/server";
-import React from "react";
+import { useSearchParams } from "next/navigation";
+import React, { useEffect } from "react";
 
-export default async function Inbox({
-  query,
-  searchParams,
-}: {
-  query: string;
-  searchParams: Promise<{ [key: string]: string | string[] | undefined }>;
-}) {
-  const user = await currentUser();
+export default function Inbox() {
+  const { getToken } = useAuth();
 
-  const filters = (await searchParams).q;
-  console.log("Filters:", filters);
+  const [ran, setRan] = React.useState(false);
+  const [emails, setEmails] = React.useState([]);
 
-  const data = await fetch(
-    `http://localhost:5172/api/search?email=${user?.emailAddresses?.[0]?.emailAddress}&query=${filters}`,
-    {
-      credentials: "include", // Critical!
-    },
+  const searchParams = useSearchParams();
+  console.log("searchParams:", searchParams.get("query"));
+  console.log(
+    "encoded searchParams:",
+    encodeURIComponent(searchParams.get("query") || ""),
   );
-  const emails = await data.json();
+
+  const getAllEmails = async () => {
+    const token = await getToken();
+
+    const data = await fetch(
+      `http://localhost:5172/search?query=${encodeURIComponent(searchParams.get("query")?.trim() || "")}`,
+      {
+        headers: {
+          Authorization: `Bearer ${token}`,
+        },
+      },
+    );
+
+    const emails = await data.json();
+    console.log("Email: ", emails[0]);
+    return emails;
+  };
+
+  React.useEffect(() => {
+    if (!ran) {
+      getAllEmails().then((emails) => {
+        setEmails(emails);
+        setRan(true);
+      });
+    }
+  }, [ran]);
 
   return <InboxClient emails={emails} />;
 }

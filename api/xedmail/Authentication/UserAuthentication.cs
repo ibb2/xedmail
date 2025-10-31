@@ -23,9 +23,7 @@ public class UserAuthentication
             secretKey: clerkSecretKey,
             authorizedParties: new[] {"http://localhost:3000"}
         );
-        
         var requestState = await AuthenticateRequest.AuthenticateRequestAsync(httpRequest, options);
-        
         if (!requestState.IsSignedIn())
         {
             return new ClerkValidationResult { IsSignedIn = false, Error = requestState.ToString() };
@@ -40,6 +38,8 @@ public class UserAuthentication
         
         var userId = sessionJson?["sub"].ToString();
         var sessionId = auth.Sid;
+        
+        Console.WriteLine($"Session validated for user {userId}");
         
         return new ClerkValidationResult
         {

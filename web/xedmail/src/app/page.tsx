@@ -1,11 +1,24 @@
 "use client";
 
 import SearchBar from "@/components/search/Search";
+import { Avatar, AvatarFallback, AvatarImage } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import {
+  Item,
+  ItemActions,
+  ItemContent,
+  ItemDescription,
+  ItemFooter,
+  ItemHeader,
+  ItemMedia,
+  ItemTitle,
+} from "@/components/ui/item";
 import { useAuth } from "@clerk/nextjs";
+import { Plus, X } from "lucide-react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
+import React, { useEffect } from "react";
 
 const params = new URLSearchParams({
   client_id:
@@ -22,6 +35,10 @@ const GoogleOauthUrl = `https://accounts.google.com/o/oauth2/v2/auth?${params.to
 export default function Home() {
   const router = useRouter();
 
+  // States
+  const [ran, setRan] = React.useState(false);
+  const [mailboxes, setMailboxes] = React.useState([]);
+
   const { getToken } = useAuth();
 
   const beginOauthFlow = async () => {
@@ -37,10 +54,30 @@ export default function Home() {
       }
 
       const data = await response.json();
-      console.log("Data :", data["authUrl"]);
       router.push(data["authUrl"]);
     });
   };
+
+  const getMailboxes = async () => {
+    const token = await getToken();
+
+    const response = await fetch("http://localhost:5172/mailboxes", {
+      headers: {
+        Authorization: `Bearer ${token}`,
+      },
+    });
+
+    const mailboxes = await response.json();
+    console.log("Get all mailboxes ", mailboxes);
+    setMailboxes(mailboxes);
+  };
+
+  useEffect(() => {
+    if (!ran) {
+      getMailboxes();
+      setRan(true);
+    }
+  }, [ran]);
 
   return (
     <div className="font-sans grid grid-rows-[20px_1fr_20px] items-center justify-items-center min-h-screen p-8 pb-20 gap-16 sm:p-20">
@@ -48,6 +85,40 @@ export default function Home() {
         <div className="items-center flex flex-col text-center min-w-full">
           <div className="flex-row gap-y-4 pb-12">
             <p className="text-5xl font-bold">Welcome Ibrahim.</p>
+            <div className="flex mb-8">
+              {mailboxes.map(
+                (mailbox: {
+                  id: string;
+                  emailAddress: string;
+                  image: string;
+                }) => (
+                  <Item key={mailbox.id} variant={"outline"} size={"sm"}>
+                    <ItemMedia>
+                      <Avatar className="size-10">
+                        <AvatarImage src={mailbox.image} />
+                        <AvatarFallback>
+                          {mailbox.emailAddress[0].toUpperCase()}
+                        </AvatarFallback>
+                      </Avatar>
+                    </ItemMedia>
+                    <ItemContent className="flex items-start">
+                      <ItemTitle>GMAIL</ItemTitle>
+                      <ItemDescription>{mailbox.emailAddress}</ItemDescription>
+                    </ItemContent>
+                    {/*<ItemActions>
+                      <Button
+                        size="icon-sm"
+                        variant="outline"
+                        className="rounded-full"
+                        aria-label="Invite"
+                      >
+                        <X />
+                      </Button>
+                    </ItemActions>*/}
+                  </Item>
+                ),
+              )}
+            </div>
             <div className="flex">
               <Button onClick={() => beginOauthFlow()}>Connect to GMAIL</Button>
             </div>

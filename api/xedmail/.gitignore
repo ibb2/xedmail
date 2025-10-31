@@ -4,3 +4,8 @@ obj/
 riderModule.iml
 /_ReSharper.Caches/
 xedmail.db*
+/Migrations/20251026093506_Initial.cs
+/Migrations/20251026093506_Initial.Designer.cs
+/Migrations/AppDbContextModelSnapshot.cs
+/Migrations/20251029115709_Initial.cs
+/Migrations/20251029115709_Initial.Designer.cs
