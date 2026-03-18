@@ -12,6 +12,15 @@ type MsParseResponse = {
 const MS_PARSER_URL = process.env.MS_PARSER_URL ?? "http://127.0.0.1:8000/parse";
 const MS_PARSER_TIMEOUT_MS = 3000;
 
+function hasStructuredFilters(search: SearchObject) {
+  return Boolean(
+    typeof search.seen === "boolean" ||
+      search.from ||
+      search.on ||
+      search.subject,
+  );
+}
+
 function buildFallbackSearchObject(query: string): SearchObject {
   const normalized = query.trim().toLowerCase();
 
@@ -48,9 +57,10 @@ function buildFallbackSearchObject(query: string): SearchObject {
     search.subject = subjectMatch[1];
   }
 
-  // Gmail supports gmraw and it maps well to natural-language style queries.
-  // For Gmail mailboxes we set it as a fallback so users can type flexible search text.
-  search.gmraw = query;
+  if (!hasStructuredFilters(search)) {
+    // Fall back to Gmail raw queries only when we do not have a structured filter set.
+    search.gmraw = query;
+  }
 
   return search;
 }
@@ -102,10 +112,7 @@ export async function buildSearchObject(query: string): Promise<SearchObject> {
       return fallback;
     }
 
-    const search: SearchObject = {
-      all: true,
-      gmraw: trimmedQuery,
-    };
+    const search: SearchObject = { all: true };
 
     if (payload.filters?.status === "unread") {
       search.seen = false;
@@ -121,10 +128,15 @@ export async function buildSearchObject(query: string): Promise<SearchObject> {
       applyDateFilter(search, payload.filters.date);
     }
 
-    return {
-      ...fallback,
-      ...search,
-    };
+    if (fallback.subject) {
+      search.subject = fallback.subject;
+    }
+
+    if (!hasStructuredFilters(search)) {
+      return fallback;
+    }
+
+    return search;
   } catch {
     return fallback;
   } finally {

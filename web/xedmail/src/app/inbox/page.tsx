@@ -13,6 +13,20 @@ export default function Inbox() {
   const searchParams = useSearchParams();
   const query = searchParams.get("query")?.trim() ?? "";
   const isFetchingRef = React.useRef(false);
+  const requestIdRef = React.useRef(0);
+  const abortControllerRef = React.useRef<AbortController | null>(null);
+  const hasFetchedFoldersRef = React.useRef(false);
+  const foldersRef = React.useRef(folders);
+  const mailboxesRef = React.useRef(mailboxes);
+  const [isLoading, setIsLoading] = React.useState(true);
+
+  React.useEffect(() => {
+    foldersRef.current = folders;
+  }, [folders]);
+
+  React.useEffect(() => {
+    mailboxesRef.current = mailboxes;
+  }, [mailboxes]);
 
   const getAllEmails = React.useCallback(async (includeFolders: boolean) => {
     if (isFetchingRef.current) {
@@ -20,43 +34,65 @@ export default function Inbox() {
     }
 
     isFetchingRef.current = true;
-
-    const token = await getToken();
+    const requestId = requestIdRef.current + 1;
+    requestIdRef.current = requestId;
+    const abortController = new AbortController();
+    abortControllerRef.current = abortController;
+    setIsLoading(true);
 
     try {
+      const token = await getToken();
       const response = await fetch(
         `/api/mail/search?query=${encodeURIComponent(query)}&includeFolders=${includeFolders}`,
         {
           headers: {
             Authorization: `Bearer ${token}`,
           },
+          cache: "no-store",
+          signal: abortController.signal,
         },
       );
 
-      if (!response.ok) {
+      if (!response.ok || requestIdRef.current !== requestId) {
         return;
       }
 
       const payload = await response.json();
       syncInbox({
         messages: payload.emails ?? [],
-        folders: payload.folders ?? (includeFolders ? [] : folders),
-        mailboxes,
+        folders: payload.folders ?? (includeFolders ? [] : foldersRef.current),
+        mailboxes: mailboxesRef.current,
       });
+      if (includeFolders) {
+        hasFetchedFoldersRef.current = true;
+      }
+    } catch (error) {
+      if (error instanceof Error && error.name === "AbortError") {
+        return;
+      }
     } finally {
-      isFetchingRef.current = false;
+      if (requestIdRef.current === requestId) {
+        isFetchingRef.current = false;
+        setIsLoading(false);
+      }
     }
-  }, [folders, getToken, mailboxes, query, syncInbox]);
+  }, [getToken, query, syncInbox]);
 
   React.useEffect(() => {
-    void getAllEmails(false);
+    abortControllerRef.current?.abort();
+    isFetchingRef.current = false;
+    void getAllEmails(!hasFetchedFoldersRef.current);
 
     const interval = window.setInterval(() => {
       void getAllEmails(false);
     }, POLL_INTERVAL_MS);
 
-    return () => window.clearInterval(interval);
-  }, [getAllEmails]);
+    return () => {
+      window.clearInterval(interval);
+      abortControllerRef.current?.abort();
+      isFetchingRef.current = false;
+    };
+  }, [getAllEmails, query]);
 
-  return <InboxClient emails={messages} />;
+  return <InboxClient emails={messages} isLoading={isLoading} query={query} />;
 }

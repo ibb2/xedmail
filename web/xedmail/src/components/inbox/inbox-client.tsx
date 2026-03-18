@@ -1,7 +1,7 @@
 // src/app/inbox/InboxClient.tsx (Client Component)
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useMemo, useState } from "react";
 import {
   Card,
   CardAction,
@@ -46,25 +46,28 @@ interface Email {
   isNew?: boolean;
 }
 
-interface Mailbox {
-  id: string;
-  emailAddress: string;
-  image: string | null;
-}
-
 function getEmailKey(email: Pick<Email, "mailboxAddress" | "uid">) {
   return `${email.mailboxAddress}:${email.uid}`;
 }
 
-export default function InboxClient({ emails }: { emails: Email[] }) {
+export default function InboxClient({
+  emails,
+  isLoading,
+  query,
+}: {
+  emails: Email[];
+  isLoading: boolean;
+  query: string;
+}) {
   const [selectedEmail, setSelectedEmail] = React.useState<Email | null>(null);
   const [body, setBody] = useState("");
   const { mailboxes, updateMessageReadStatus, clearMessageNewStatus } = useJazzInboxState();
 
   const { getToken } = useAuth();
-
-  // Use local state so updates cause a re-render
-  const [localEmails, setLocalEmails] = useState(emails);
+  const sortedEmails = useMemo(
+    () => [...emails].sort((a, b) => Date.parse(b.date) - Date.parse(a.date)),
+    [emails],
+  );
 
   const clean = () => {
     if (!body) return "";
@@ -92,11 +95,6 @@ export default function InboxClient({ emails }: { emails: Email[] }) {
     );
 
     const updatedEmail = { ...email, isRead: !email.isRead, isNew: email.isRead ? email.isNew : false };
-
-    // Update the local array (immutable update)
-    setLocalEmails((prev) =>
-      prev.map((entry) => (getEmailKey(entry) === getEmailKey(email) ? updatedEmail : entry)),
-    );
     updateMessageReadStatus(
       {
         uid: email.uid,
@@ -145,11 +143,6 @@ export default function InboxClient({ emails }: { emails: Email[] }) {
     return words.map((word) => word.charAt(0).toUpperCase()).slice(0, 2);
   };
 
-  // Keep local state in sync if parent prop changes
-  useEffect(() => {
-    setLocalEmails(emails);
-  }, [emails]);
-
   return (
     <div className="flex flex-col items-center justify-center h-full">
       <p>Inbox</p>
@@ -161,9 +154,14 @@ export default function InboxClient({ emails }: { emails: Email[] }) {
         }}
       >
         <ul className="flex flex-col gap-y-1 w-2/3 max-w-2xl">
-          {localEmails
-            .sort((a, b) => Date.parse(b.date) - Date.parse(a.date))
-            .map((email: Email) => (
+          {!isLoading && sortedEmails.length === 0 ? (
+            <li className="rounded-md border border-dashed border-border bg-muted/20 px-6 py-12 text-center text-sm text-muted-foreground">
+              {query
+                ? `No emails matched "${query}".`
+                : "No emails available in the inbox."}
+            </li>
+          ) : null}
+          {sortedEmails.map((email: Email) => (
               <Item
                 variant="outline"
                 key={getEmailKey(email)}
@@ -176,13 +174,6 @@ export default function InboxClient({ emails }: { emails: Email[] }) {
                 )}
                 onClick={async () => {
                   setSelectedEmail({ ...email, isNew: false });
-                  setLocalEmails((prev) =>
-                    prev.map((entry) =>
-                      getEmailKey(entry) === getEmailKey(email)
-                        ? { ...entry, isNew: false }
-                        : entry,
-                    ),
-                  );
                   clearMessageNewStatus({
                     uid: email.uid,
                     mailboxAddress: email.mailboxAddress,
@@ -290,6 +281,13 @@ export default function InboxClient({ emails }: { emails: Email[] }) {
               </Item>
             ))}
         </ul>
+        {isLoading && sortedEmails.length === 0 ? (
+          <div className="mt-4 w-2/3 max-w-2xl rounded-md border border-dashed border-border bg-muted/20 px-6 py-8 text-center text-sm text-muted-foreground">
+            {query
+              ? `Searching for "${query}"...`
+              : "Loading latest emails..."}
+          </div>
+        ) : null}
         <DialogContent
           className="overflow-x-auto w-full max-w-3/5! h-2/3"
           onCloseAutoFocus={(event) => event.preventDefault()}
