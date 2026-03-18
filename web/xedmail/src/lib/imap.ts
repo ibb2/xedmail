@@ -56,7 +56,7 @@ function messageToEmailDto(
   const envelope = message.envelope;
   const from = addressToTuple(envelope?.from?.[0]);
   const to = envelope?.to?.map((entry) => entry.address).filter(Boolean).join(", ") ?? "unknown";
-  const id = envelope?.messageId ?? `uid-${message.uid}`;
+  const id = `${mailboxAddress}:${message.uid}`;
   const date = message.internalDate
     ? new Date(message.internalDate).toISOString()
     : new Date().toISOString();
@@ -149,7 +149,7 @@ export async function getFolders(auth: ImapAuth): Promise<FolderDto[]> {
 export async function searchInboxMessages(
   auth: ImapAuth,
   query: SearchObject,
-  limit = 50,
+  limit = 20,
 ): Promise<EmailDto[]> {
   return withImapClient(auth, async (client) => {
     const lock = await client.getMailboxLock(INBOX);
@@ -173,6 +173,42 @@ export async function searchInboxMessages(
       );
 
       return messages.map((message) => messageToEmailDto(message, auth.email));
+    } finally {
+      lock.release();
+    }
+  });
+}
+
+export async function getLatestInboxMessages(
+  auth: ImapAuth,
+  limit = 20,
+): Promise<EmailDto[]> {
+  return withImapClient(auth, async (client) => {
+    const lock = await client.getMailboxLock(INBOX);
+
+    try {
+      const mailbox = client.mailbox;
+      const exists = mailbox ? mailbox.exists : 0;
+      if (exists === 0) {
+        return [];
+      }
+
+      const startSequence = Math.max(1, exists - limit + 1);
+      const messages = await client.fetchAll(
+        `${startSequence}:*`,
+        {
+          uid: true,
+          envelope: true,
+          flags: true,
+          internalDate: true,
+        },
+        { uid: false },
+      );
+
+      return messages
+        .map((message) => messageToEmailDto(message, auth.email))
+        .sort((a, b) => Date.parse(b.date) - Date.parse(a.date))
+        .slice(0, limit);
     } finally {
       lock.release();
     }

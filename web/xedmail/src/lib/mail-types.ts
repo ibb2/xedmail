@@ -31,6 +31,7 @@ export type EmailDto = {
   body?: string;
   date: string;
   isRead: boolean;
+  isNew?: boolean;
 };
 
 export type OAuthState = {

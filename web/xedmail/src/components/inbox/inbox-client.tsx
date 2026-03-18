@@ -31,6 +31,7 @@ import {
 } from "../ui/item";
 import { Avatar, AvatarFallback, AvatarImage } from "../ui/avatar";
 import { useJazzInboxState } from "@/providers/jazz-provider";
+import { cn } from "@/lib/utils";
 
 interface Email {
   id: string;
@@ -42,6 +43,7 @@ interface Email {
   body?: string;
   date: string;
   isRead: boolean;
+  isNew?: boolean;
 }
 
 interface Mailbox {
@@ -50,10 +52,14 @@ interface Mailbox {
   image: string | null;
 }
 
+function getEmailKey(email: Pick<Email, "mailboxAddress" | "uid">) {
+  return `${email.mailboxAddress}:${email.uid}`;
+}
+
 export default function InboxClient({ emails }: { emails: Email[] }) {
   const [selectedEmail, setSelectedEmail] = React.useState<Email | null>(null);
   const [body, setBody] = useState("");
-  const { mailboxes, updateMessageReadStatus } = useJazzInboxState();
+  const { mailboxes, updateMessageReadStatus, clearMessageNewStatus } = useJazzInboxState();
 
   const { getToken } = useAuth();
 
@@ -68,7 +74,7 @@ export default function InboxClient({ emails }: { emails: Email[] }) {
   const htmlEmailBody = { __html: clean() };
 
   // Accept the email to toggle and stop event propagation from the button
-  const toggleRead = async (email: any) => {
+  const toggleRead = async (email: Email) => {
     if (!email) return;
 
     const token = await getToken();
@@ -85,11 +91,11 @@ export default function InboxClient({ emails }: { emails: Email[] }) {
       },
     );
 
-    const updatedEmail = { ...email, isRead: !email.isRead };
+    const updatedEmail = { ...email, isRead: !email.isRead, isNew: email.isRead ? email.isNew : false };
 
     // Update the local array (immutable update)
     setLocalEmails((prev) =>
-      prev.map((e) => (e.id === email.id ? updatedEmail : e)),
+      prev.map((entry) => (getEmailKey(entry) === getEmailKey(email) ? updatedEmail : entry)),
     );
     updateMessageReadStatus(
       {
@@ -99,17 +105,20 @@ export default function InboxClient({ emails }: { emails: Email[] }) {
       updatedEmail.isRead,
     );
 
-    // // Also update selectedEmail if it's the same one currently open
-    // if (selectedEmail?.id === email.id) {
-    //   setSelectedEmail(updatedEmail);
-    // }
+    if (!email.isRead) {
+      clearMessageNewStatus({
+        uid: email.uid,
+        mailboxAddress: email.mailboxAddress,
+      });
+    }
+
+    if (selectedEmail && getEmailKey(selectedEmail) === getEmailKey(email)) {
+      setSelectedEmail(updatedEmail);
+    }
   };
 
-  const fetchBody = async (email: any) => {
+  const fetchBody = async (email: Email) => {
     const token = await getToken();
-
-    console.log("Email ID: ", email.id);
-    console.log("Email UID: ", email.uid);
 
     const response = await fetch(
       `/api/mail/emails/${email.uid}?mailbox=${encodeURIComponent(email.mailboxAddress)}`,
@@ -120,11 +129,14 @@ export default function InboxClient({ emails }: { emails: Email[] }) {
       },
     );
 
+    if (!response.ok) {
+      return "";
+    }
+
     const res = await response.json();
-    const body = res.body;
-    console.log("Fetching email body, ", body);
-    setBody(body);
-    return body;
+    const nextBody = typeof res.body === "string" ? res.body : "";
+    setBody(nextBody);
+    return nextBody;
   };
 
   const getInitials = (name: string) => {
@@ -154,12 +166,28 @@ export default function InboxClient({ emails }: { emails: Email[] }) {
             .map((email: Email) => (
               <Item
                 variant="outline"
-                key={email.id}
+                key={getEmailKey(email)}
+                className={cn(
+                  "cursor-pointer border transition-colors",
+                  email.isNew
+                    ? "border-emerald-300 bg-emerald-50/80 shadow-[inset_4px_0_0_0_theme(colors.emerald.500)]"
+                    : "border-border bg-background",
+                  !email.isRead && !email.isNew && "bg-muted/20",
+                )}
                 onClick={async () => {
-                  console.log("Clicked email");
-                  setSelectedEmail(email);
-                  await fetchBody(email).then(setBody);
-                  console.log("Fetched body");
+                  setSelectedEmail({ ...email, isNew: false });
+                  setLocalEmails((prev) =>
+                    prev.map((entry) =>
+                      getEmailKey(entry) === getEmailKey(email)
+                        ? { ...entry, isNew: false }
+                        : entry,
+                    ),
+                  );
+                  clearMessageNewStatus({
+                    uid: email.uid,
+                    mailboxAddress: email.mailboxAddress,
+                  });
+                  await fetchBody(email);
                 }}
               >
                 <ItemMedia>
@@ -219,9 +247,18 @@ export default function InboxClient({ emails }: { emails: Email[] }) {
                 </ItemMedia>
                 <ItemContent>
                   <DialogTrigger>
-                    <ItemTitle>{email.from[email.from.length - 1]}</ItemTitle>
+                    <ItemTitle className={cn(email.isNew && "font-semibold text-foreground")}>
+                      {email.from[email.from.length - 1]}
+                      {email.isNew ? (
+                        <span className="rounded-full bg-emerald-600 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-white">
+                          New
+                        </span>
+                      ) : null}
+                    </ItemTitle>
                   </DialogTrigger>
-                  <ItemDescription>{email.subject}</ItemDescription>
+                  <ItemDescription className={cn(email.isNew && "text-foreground")}>
+                    {email.subject}
+                  </ItemDescription>
                 </ItemContent>
                 <ItemActions>
                   {/*<Button size="sm" variant="outline">

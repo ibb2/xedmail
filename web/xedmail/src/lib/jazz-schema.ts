@@ -25,6 +25,7 @@ export const JazzMessage = co.map({
   body: z.optional(z.string()),
   date: z.string(),
   isRead: z.boolean(),
+  isNew: z.optional(z.boolean()),
 });
 
 export const JazzInboxState = co.map({

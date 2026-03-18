@@ -19,6 +19,9 @@ type JazzInboxContextValue = {
     target: Pick<EmailDto, "uid" | "mailboxAddress">,
     isRead: boolean,
   ) => void;
+  clearMessageNewStatus: (
+    target: Pick<EmailDto, "uid" | "mailboxAddress">,
+  ) => void;
 };
 
 const JazzInboxContext = createContext<JazzInboxContextValue | null>(null);
@@ -53,6 +56,7 @@ function JazzInboxStateProvider({ children }: { children: React.ReactNode }) {
         mailboxes: [],
         syncInbox: () => undefined,
         updateMessageReadStatus: () => undefined,
+        clearMessageNewStatus: () => undefined,
       };
     }
 
@@ -88,6 +92,7 @@ function JazzInboxStateProvider({ children }: { children: React.ReactNode }) {
         body: message.body,
         date: message.date,
         isRead: message.isRead,
+        isNew: message.isNew ?? false,
       }));
 
     const mapFolders = (state: any): FolderDto[] =>
@@ -112,20 +117,38 @@ function JazzInboxStateProvider({ children }: { children: React.ReactNode }) {
       mailboxes: MailboxDto[];
     }) => {
       const state = ensureInboxState();
+      const existingMessages = new Map(
+        state.messages.map((message: any) => [
+          `${message.mailboxAddress}:${message.uid}`,
+          message,
+        ]),
+      );
+      const isInitialSync = state.messages.length === 0;
 
       state.messages.$jazz.applyDiff(
-        payload.messages.map((message) => ({
-          id: message.id,
-          uid: message.uid,
-          mailboxAddress: message.mailboxAddress,
-          subject: message.subject,
-          fromName: message.from[0] ?? "Unknown",
-          fromAddress: message.from[1] ?? "unknown",
-          to: message.to,
-          body: message.body,
-          date: message.date,
-          isRead: message.isRead,
-        })),
+        payload.messages.map((message) => {
+          const key = `${message.mailboxAddress}:${message.uid}`;
+          const existingMessage = existingMessages.get(key);
+          const isNew = isInitialSync
+            ? false
+            : message.isNew ??
+              existingMessage?.isNew ??
+              !existingMessage;
+
+          return {
+            id: message.id,
+            uid: message.uid,
+            mailboxAddress: message.mailboxAddress,
+            subject: message.subject,
+            fromName: message.from[0] ?? "Unknown",
+            fromAddress: message.from[1] ?? "unknown",
+            to: message.to,
+            body: message.body,
+            date: message.date,
+            isRead: message.isRead,
+            isNew,
+          };
+        }),
       );
 
       state.folders.$jazz.applyDiff(
@@ -162,6 +185,24 @@ function JazzInboxStateProvider({ children }: { children: React.ReactNode }) {
 
       if (message) {
         message.$jazz.set("isRead", isRead);
+        if (isRead) {
+          message.$jazz.set("isNew", false);
+        }
+      }
+    };
+
+    const clearMessageNewStatus = (
+      target: Pick<EmailDto, "uid" | "mailboxAddress">,
+    ) => {
+      const state = ensureInboxState();
+      const message = state.messages.find(
+        (entry) =>
+          entry.uid === target.uid &&
+          entry.mailboxAddress === target.mailboxAddress,
+      );
+
+      if (message) {
+        message.$jazz.set("isNew", false);
       }
     };
 
@@ -173,6 +214,7 @@ function JazzInboxStateProvider({ children }: { children: React.ReactNode }) {
       mailboxes: mapMailboxes(state),
       syncInbox,
       updateMessageReadStatus,
+      clearMessageNewStatus,
     };
   }, [me]);
 
