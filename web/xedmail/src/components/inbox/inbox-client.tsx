@@ -1,7 +1,7 @@
 // src/app/inbox/InboxClient.tsx (Client Component)
 "use client";
 
-import React, { useState, useEffect } from "react";
+import React, { useMemo, useState } from "react";
 import {
   Card,
   CardAction,
@@ -30,48 +30,44 @@ import {
   ItemTitle,
 } from "../ui/item";
 import { Avatar, AvatarFallback, AvatarImage } from "../ui/avatar";
+import { useJazzInboxState } from "@/providers/jazz-provider";
+import { cn } from "@/lib/utils";
 
 interface Email {
   id: string;
   uid: string;
+  mailboxAddress: string;
   subject: string;
   from: [string, string];
   to: string;
-  body: string;
+  body?: string;
   date: string;
   isRead: boolean;
+  isNew?: boolean;
 }
 
-interface Mailbox {
-  id: string;
-  emailAddress: string;
-  image: string;
+function getEmailKey(email: Pick<Email, "mailboxAddress" | "uid">) {
+  return `${email.mailboxAddress}:${email.uid}`;
 }
 
-export default function InboxClient({ emails }: { emails: Email[] }) {
+export default function InboxClient({
+  emails,
+  isLoading,
+  query,
+}: {
+  emails: Email[];
+  isLoading: boolean;
+  query: string;
+}) {
   const [selectedEmail, setSelectedEmail] = React.useState<Email | null>(null);
   const [body, setBody] = useState("");
-  const [ran, setRan] = React.useState(false);
-  const [mailboxes, setMailboxes] = React.useState<Mailbox[]>([]);
+  const { mailboxes, updateMessageReadStatus, clearMessageNewStatus } = useJazzInboxState();
 
   const { getToken } = useAuth();
-
-  // Use local state so updates cause a re-render
-  const [localEmails, setLocalEmails] = useState(emails);
-
-  const getMailboxes = async () => {
-    const token = await getToken();
-
-    const response = await fetch("http://localhost:5172/mailboxes", {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-    });
-
-    const mailboxes = await response.json();
-    console.log("Get all mailboxes ", mailboxes);
-    setMailboxes(mailboxes);
-  };
+  const sortedEmails = useMemo(
+    () => [...emails].sort((a, b) => Date.parse(b.date) - Date.parse(a.date)),
+    [emails],
+  );
 
   const clean = () => {
     if (!body) return "";
@@ -81,14 +77,14 @@ export default function InboxClient({ emails }: { emails: Email[] }) {
   const htmlEmailBody = { __html: clean() };
 
   // Accept the email to toggle and stop event propagation from the button
-  const toggleRead = async (email: any) => {
+  const toggleRead = async (email: Email) => {
     if (!email) return;
 
     const token = await getToken();
 
     // Optionally send PATCH to server here...
-    fetch(
-      `http://localhost:5172/emails/${email.to}/${email.uid}?isRead=${email.isRead}`,
+    await fetch(
+      `/api/mail/emails/mailbox/${encodeURIComponent(email.mailboxAddress)}/${email.uid}?isRead=${email.isRead}`,
       {
         method: "PATCH",
         headers: {
@@ -98,27 +94,32 @@ export default function InboxClient({ emails }: { emails: Email[] }) {
       },
     );
 
-    const updatedEmail = { ...email, isRead: !email.isRead };
-
-    // Update the local array (immutable update)
-    setLocalEmails((prev) =>
-      prev.map((e) => (e.id === email.id ? updatedEmail : e)),
+    const updatedEmail = { ...email, isRead: !email.isRead, isNew: email.isRead ? email.isNew : false };
+    updateMessageReadStatus(
+      {
+        uid: email.uid,
+        mailboxAddress: email.mailboxAddress,
+      },
+      updatedEmail.isRead,
     );
 
-    // // Also update selectedEmail if it's the same one currently open
-    // if (selectedEmail?.id === email.id) {
-    //   setSelectedEmail(updatedEmail);
-    // }
+    if (!email.isRead) {
+      clearMessageNewStatus({
+        uid: email.uid,
+        mailboxAddress: email.mailboxAddress,
+      });
+    }
+
+    if (selectedEmail && getEmailKey(selectedEmail) === getEmailKey(email)) {
+      setSelectedEmail(updatedEmail);
+    }
   };
 
-  const fetchBody = async (email: any) => {
+  const fetchBody = async (email: Email) => {
     const token = await getToken();
 
-    console.log("Email ID: ", email.id);
-    console.log("Email UID: ", email.uid);
-
     const response = await fetch(
-      `http://localhost:5172/emails/${email.uid}?query=${encodeURIComponent(email.to)}`,
+      `/api/mail/emails/${email.uid}?mailbox=${encodeURIComponent(email.mailboxAddress)}`,
       {
         headers: {
           Authorization: `Bearer ${token}`,
@@ -126,11 +127,14 @@ export default function InboxClient({ emails }: { emails: Email[] }) {
       },
     );
 
+    if (!response.ok) {
+      return "";
+    }
+
     const res = await response.json();
-    const body = res.body;
-    console.log("Fetching email body, ", body);
-    setBody(body);
-    return body;
+    const nextBody = typeof res.body === "string" ? res.body : "";
+    setBody(nextBody);
+    return nextBody;
   };
 
   const getInitials = (name: string) => {
@@ -138,15 +142,6 @@ export default function InboxClient({ emails }: { emails: Email[] }) {
 
     return words.map((word) => word.charAt(0).toUpperCase()).slice(0, 2);
   };
-
-  // Keep local state in sync if parent prop changes
-  useEffect(() => {
-    setLocalEmails(emails);
-    if (!ran) {
-      getMailboxes();
-      setRan(true);
-    }
-  }, [emails, ran]);
 
   return (
     <div className="flex flex-col items-center justify-center h-full">
@@ -159,17 +154,31 @@ export default function InboxClient({ emails }: { emails: Email[] }) {
         }}
       >
         <ul className="flex flex-col gap-y-1 w-2/3 max-w-2xl">
-          {localEmails
-            .sort((a, b) => Date.parse(b.date) - Date.parse(a.date))
-            .map((email: Email) => (
+          {!isLoading && sortedEmails.length === 0 ? (
+            <li className="rounded-md border border-dashed border-border bg-muted/20 px-6 py-12 text-center text-sm text-muted-foreground">
+              {query
+                ? `No emails matched "${query}".`
+                : "No emails available in the inbox."}
+            </li>
+          ) : null}
+          {sortedEmails.map((email: Email) => (
               <Item
                 variant="outline"
-                key={email.id}
+                key={getEmailKey(email)}
+                className={cn(
+                  "cursor-pointer border transition-colors",
+                  email.isNew
+                    ? "border-emerald-300 bg-emerald-50/80 shadow-[inset_4px_0_0_0_theme(colors.emerald.500)]"
+                    : "border-border bg-background",
+                  !email.isRead && !email.isNew && "bg-muted/20",
+                )}
                 onClick={async () => {
-                  console.log("Clicked email");
-                  setSelectedEmail(email);
-                  await fetchBody(email).then(setBody);
-                  console.log("Fetched body");
+                  setSelectedEmail({ ...email, isNew: false });
+                  clearMessageNewStatus({
+                    uid: email.uid,
+                    mailboxAddress: email.mailboxAddress,
+                  });
+                  await fetchBody(email);
                 }}
               >
                 <ItemMedia>
@@ -178,9 +187,9 @@ export default function InboxClient({ emails }: { emails: Email[] }) {
                       <AvatarImage
                         src={
                           mailboxes.find(
-                            (mailbox: Mailbox) =>
-                              mailbox.emailAddress === email.to,
-                          )?.image
+                            (mailbox) =>
+                              mailbox.emailAddress === email.mailboxAddress,
+                          )?.image ?? undefined
                         }
                         alt="@shadcn"
                         onError={(e) => {
@@ -188,7 +197,7 @@ export default function InboxClient({ emails }: { emails: Email[] }) {
                         }}
                       />
                       <AvatarFallback>
-                        {email.to.charAt(0).toUpperCase()}
+                        {email.mailboxAddress.charAt(0).toUpperCase()}
                       </AvatarFallback>
                     </Avatar>
                     <Avatar className="hidden sm:flex">
@@ -229,9 +238,18 @@ export default function InboxClient({ emails }: { emails: Email[] }) {
                 </ItemMedia>
                 <ItemContent>
                   <DialogTrigger>
-                    <ItemTitle>{email.from[email.from.length - 1]}</ItemTitle>
+                    <ItemTitle className={cn(email.isNew && "font-semibold text-foreground")}>
+                      {email.from[email.from.length - 1]}
+                      {email.isNew ? (
+                        <span className="rounded-full bg-emerald-600 px-2 py-0.5 text-[10px] font-semibold uppercase tracking-[0.18em] text-white">
+                          New
+                        </span>
+                      ) : null}
+                    </ItemTitle>
                   </DialogTrigger>
-                  <ItemDescription>{email.subject}</ItemDescription>
+                  <ItemDescription className={cn(email.isNew && "text-foreground")}>
+                    {email.subject}
+                  </ItemDescription>
                 </ItemContent>
                 <ItemActions>
                   {/*<Button size="sm" variant="outline">
@@ -263,6 +281,13 @@ export default function InboxClient({ emails }: { emails: Email[] }) {
               </Item>
             ))}
         </ul>
+        {isLoading && sortedEmails.length === 0 ? (
+          <div className="mt-4 w-2/3 max-w-2xl rounded-md border border-dashed border-border bg-muted/20 px-6 py-8 text-center text-sm text-muted-foreground">
+            {query
+              ? `Searching for "${query}"...`
+              : "Loading latest emails..."}
+          </div>
+        ) : null}
         <DialogContent
           className="overflow-x-auto w-full max-w-3/5! h-2/3"
           onCloseAutoFocus={(event) => event.preventDefault()}
