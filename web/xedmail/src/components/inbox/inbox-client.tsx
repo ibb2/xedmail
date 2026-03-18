@@ -30,14 +30,16 @@ import {
   ItemTitle,
 } from "../ui/item";
 import { Avatar, AvatarFallback, AvatarImage } from "../ui/avatar";
+import { useJazzInboxState } from "@/providers/jazz-provider";
 
 interface Email {
   id: string;
   uid: string;
+  mailboxAddress: string;
   subject: string;
   from: [string, string];
   to: string;
-  body: string;
+  body?: string;
   date: string;
   isRead: boolean;
 }
@@ -45,33 +47,18 @@ interface Email {
 interface Mailbox {
   id: string;
   emailAddress: string;
-  image: string;
+  image: string | null;
 }
 
 export default function InboxClient({ emails }: { emails: Email[] }) {
   const [selectedEmail, setSelectedEmail] = React.useState<Email | null>(null);
   const [body, setBody] = useState("");
-  const [ran, setRan] = React.useState(false);
-  const [mailboxes, setMailboxes] = React.useState<Mailbox[]>([]);
+  const { mailboxes, updateMessageReadStatus } = useJazzInboxState();
 
   const { getToken } = useAuth();
 
   // Use local state so updates cause a re-render
   const [localEmails, setLocalEmails] = useState(emails);
-
-  const getMailboxes = async () => {
-    const token = await getToken();
-
-    const response = await fetch("http://localhost:5172/mailboxes", {
-      headers: {
-        Authorization: `Bearer ${token}`,
-      },
-    });
-
-    const mailboxes = await response.json();
-    console.log("Get all mailboxes ", mailboxes);
-    setMailboxes(mailboxes);
-  };
 
   const clean = () => {
     if (!body) return "";
@@ -87,8 +74,8 @@ export default function InboxClient({ emails }: { emails: Email[] }) {
     const token = await getToken();
 
     // Optionally send PATCH to server here...
-    fetch(
-      `http://localhost:5172/emails/${email.to}/${email.uid}?isRead=${email.isRead}`,
+    await fetch(
+      `/api/mail/emails/mailbox/${encodeURIComponent(email.mailboxAddress)}/${email.uid}?isRead=${email.isRead}`,
       {
         method: "PATCH",
         headers: {
@@ -104,6 +91,13 @@ export default function InboxClient({ emails }: { emails: Email[] }) {
     setLocalEmails((prev) =>
       prev.map((e) => (e.id === email.id ? updatedEmail : e)),
     );
+    updateMessageReadStatus(
+      {
+        uid: email.uid,
+        mailboxAddress: email.mailboxAddress,
+      },
+      updatedEmail.isRead,
+    );
 
     // // Also update selectedEmail if it's the same one currently open
     // if (selectedEmail?.id === email.id) {
@@ -118,7 +112,7 @@ export default function InboxClient({ emails }: { emails: Email[] }) {
     console.log("Email UID: ", email.uid);
 
     const response = await fetch(
-      `http://localhost:5172/emails/${email.uid}?query=${encodeURIComponent(email.to)}`,
+      `/api/mail/emails/${email.uid}?mailbox=${encodeURIComponent(email.mailboxAddress)}`,
       {
         headers: {
           Authorization: `Bearer ${token}`,
@@ -142,11 +136,7 @@ export default function InboxClient({ emails }: { emails: Email[] }) {
   // Keep local state in sync if parent prop changes
   useEffect(() => {
     setLocalEmails(emails);
-    if (!ran) {
-      getMailboxes();
-      setRan(true);
-    }
-  }, [emails, ran]);
+  }, [emails]);
 
   return (
     <div className="flex flex-col items-center justify-center h-full">
@@ -178,9 +168,9 @@ export default function InboxClient({ emails }: { emails: Email[] }) {
                       <AvatarImage
                         src={
                           mailboxes.find(
-                            (mailbox: Mailbox) =>
-                              mailbox.emailAddress === email.to,
-                          )?.image
+                            (mailbox) =>
+                              mailbox.emailAddress === email.mailboxAddress,
+                          )?.image ?? undefined
                         }
                         alt="@shadcn"
                         onError={(e) => {
@@ -188,7 +178,7 @@ export default function InboxClient({ emails }: { emails: Email[] }) {
                         }}
                       />
                       <AvatarFallback>
-                        {email.to.charAt(0).toUpperCase()}
+                        {email.mailboxAddress.charAt(0).toUpperCase()}
                       </AvatarFallback>
                     </Avatar>
                     <Avatar className="hidden sm:flex">

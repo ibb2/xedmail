@@ -19,32 +19,21 @@ import { Plus, X } from "lucide-react";
 import Image from "next/image";
 import { useRouter } from "next/navigation";
 import React, { useEffect } from "react";
-
-const params = new URLSearchParams({
-  client_id:
-    "611007919856-g0o1ds7pf4qbh8qef9qul4ofqudp8bqk.apps.googleusercontent.com",
-  redirect_uri: "http://localhost:5172/oauth/callback",
-  response_type: "code",
-  scope: "openid https://mail.google.com/ profile email",
-  access_type: "offline",
-  prompt: "consent",
-});
-
-const GoogleOauthUrl = `https://accounts.google.com/o/oauth2/v2/auth?${params.toString()}`;
+import { useJazzInboxState } from "@/providers/jazz-provider";
 
 export default function Home() {
   const router = useRouter();
+  const { mailboxes, messages, folders, syncInbox } = useJazzInboxState();
 
   // States
   const [ran, setRan] = React.useState(false);
-  const [mailboxes, setMailboxes] = React.useState([]);
 
   const { getToken } = useAuth();
 
   const beginOauthFlow = async () => {
     const token = await getToken();
 
-    fetch("http://localhost:5172/oauth/start", {
+    fetch("/api/mail/oauth/start", {
       headers: {
         Authorization: `Bearer ${token}`,
       },
@@ -61,15 +50,18 @@ export default function Home() {
   const getMailboxes = async () => {
     const token = await getToken();
 
-    const response = await fetch("http://localhost:5172/mailboxes", {
+    const response = await fetch("/api/mail/mailboxes", {
       headers: {
         Authorization: `Bearer ${token}`,
       },
     });
 
-    const mailboxes = await response.json();
-    console.log("Get all mailboxes ", mailboxes);
-    setMailboxes(mailboxes);
+    const nextMailboxes = await response.json();
+    syncInbox({
+      messages,
+      folders,
+      mailboxes: nextMailboxes,
+    });
   };
 
   useEffect(() => {
@@ -90,12 +82,12 @@ export default function Home() {
                 (mailbox: {
                   id: string;
                   emailAddress: string;
-                  image: string;
+                  image: string | null;
                 }) => (
                   <Item key={mailbox.id} variant={"outline"} size={"sm"}>
                     <ItemMedia>
                       <Avatar className="size-10">
-                        <AvatarImage src={mailbox.image} />
+                        <AvatarImage src={mailbox.image ?? undefined} />
                         <AvatarFallback>
                           {mailbox.emailAddress[0].toUpperCase()}
                         </AvatarFallback>
