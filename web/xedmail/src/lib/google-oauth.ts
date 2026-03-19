@@ -16,7 +16,7 @@ export function createGoogleAuthUrl(state: string): string {
     client_id: requireEnv("GOOGLE_CLIENT_ID"),
     redirect_uri: requireEnv("GOOGLE_REDIRECT_URI"),
     response_type: "code",
-    scope: "openid https://mail.google.com/ profile email",
+    scope: "openid https://mail.google.com/ profile email https://www.googleapis.com/auth/gmail.send",
     access_type: "offline",
     prompt: "consent",
     state,
