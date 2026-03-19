@@ -310,12 +310,6 @@ function EmailReader({
 // ─── Tab constants ─────────────────────────────────────────────────────────────
 const TABS = ["Focused", "Unread", "Starred"] as const;
 
-const GATEKEEPER_CARDS = [
-  { icon: "domain", name: "Lumina Ventures", badge: "External", preview: "Inquiry regarding the Q3 quarterly retrospective and asset allocation..." },
-  { icon: "person_search", name: "Elena Vance", badge: "New Contact", preview: "Seeking collaboration on the Obsidian design manifesto project." },
-  { icon: "campaign", name: "The Monograph", badge: "News", preview: "Your weekly curated selection of architecture and fine art." },
-];
-
 // ─── Inbox Client ─────────────────────────────────────────────────────────────
 
 export default function InboxClient({
@@ -332,7 +326,7 @@ export default function InboxClient({
   const [isReaderOpen, setIsReaderOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<(typeof TABS)[number]>("Focused");
   const [localQuery, setLocalQuery] = useState(query);
-  const { updateMessageReadStatus, clearMessageNewStatus, archiveMessage, snoozeMessage, senderRules } = useJazzInboxState();
+  const { updateMessageReadStatus, clearMessageNewStatus, archiveMessage, snoozeMessage, senderRules, allowSender, blockSender } = useJazzInboxState();
   const { getToken } = useAuth();
   const { user } = useUser();
   const router = useRouter();
@@ -358,6 +352,19 @@ export default function InboxClient({
     if (activeTab === "Unread") result = result.filter((e) => !e.isRead);
     return result;
   }, [sortedEmails, activeTab, blockedAddresses]);
+
+  const gatekeeperCandidates = useMemo(() => {
+    const ruledAddresses = new Set(senderRules.map((r) => r.address));
+    const addressCount = new Map<string, number>();
+    for (const email of sortedEmails) {
+      const addr = email.from[1];
+      addressCount.set(addr, (addressCount.get(addr) ?? 0) + 1);
+    }
+    return sortedEmails
+      .filter((e) => addressCount.get(e.from[1]) === 1 && !ruledAddresses.has(e.from[1]))
+      .sort((a, b) => Date.parse(b.date) - Date.parse(a.date))
+      .slice(0, 3);
+  }, [sortedEmails, senderRules]);
 
   const unreadCount = sortedEmails.filter((e) => !e.isRead).length;
 
@@ -653,50 +660,49 @@ export default function InboxClient({
           </div>
 
           {/* Gatekeeper */}
-          <section style={{ marginBottom: 48 }}>
-            <div className="flex items-baseline gap-3 mb-6">
-              <h2 style={{ fontFamily: "'Newsreader', serif", fontSize: 30, color: "#E5E2E1" }}>The Gatekeeper</h2>
-              <span style={{ fontFamily: "'Newsreader', serif", fontStyle: "italic", fontSize: 18, color: "#D8C3B4" }}>
-                Reviewing {GATEKEEPER_CARDS.length} first-time senders
-              </span>
-            </div>
-            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-              {GATEKEEPER_CARDS.map(({ icon, name, badge, preview }) => (
-                <div
-                  key={name}
-                  className="group flex flex-col gap-3 transition-all"
-                  style={{
-                    background: "#1C1B1B",
-                    border: "1px solid rgba(82,68,57,0.15)",
-                    padding: 16,
-                    borderRadius: "0.75rem",
-                  }}
-                >
-                  <div className="flex items-center gap-3">
-                    <div
-                      className="flex items-center justify-center"
-                      style={{ width: 32, height: 32, borderRadius: "9999px", background: "rgba(82,68,57,0.3)", color: "rgba(255,183,123,0.8)" }}
-                    >
-                      <span className="material-symbols-outlined" style={{ fontSize: 18 }}>{icon}</span>
+          {gatekeeperCandidates.length > 0 && (
+            <section style={{ marginBottom: 48 }}>
+              <div className="flex items-baseline gap-3 mb-6">
+                <h2 style={{ fontFamily: "'Newsreader', serif", fontSize: 30, color: "#E5E2E1" }}>The Gatekeeper</h2>
+                <span style={{ fontFamily: "'Newsreader', serif", fontStyle: "italic", fontSize: 18, color: "#D8C3B4" }}>
+                  Reviewing {gatekeeperCandidates.length} first-time sender{gatekeeperCandidates.length !== 1 ? "s" : ""}
+                </span>
+              </div>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                {gatekeeperCandidates.map((email) => (
+                  <div
+                    key={`${email.mailboxAddress}:${email.uid}`}
+                    className="group flex flex-col gap-3 transition-all"
+                    style={{ background: "#1C1B1B", border: "1px solid rgba(82,68,57,0.15)", padding: 16, borderRadius: "0.75rem" }}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div
+                        className="flex items-center justify-center"
+                        style={{ width: 32, height: 32, borderRadius: "9999px", background: "rgba(82,68,57,0.3)", color: "rgba(255,183,123,0.8)", fontSize: 14, fontWeight: 700 }}
+                      >
+                        {(email.from[0]?.[0] ?? email.from[1]?.[0] ?? "?").toUpperCase()}
+                      </div>
+                      <div className="flex flex-col">
+                        <h3 style={{ fontSize: 14, fontWeight: 500, color: "#E5E2E1" }}>{email.from[0] || email.from[1]}</h3>
+                        <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 8, color: "rgba(216,195,180,0.4)", letterSpacing: "0.1em", textTransform: "uppercase" }}>{email.from[1]}</span>
+                      </div>
                     </div>
-                    <div className="flex flex-col">
-                      <h3 style={{ fontSize: 14, fontWeight: 500, color: "#E5E2E1" }}>{name}</h3>
-                      <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 8, color: "rgba(216,195,180,0.4)", letterSpacing: "0.1em", textTransform: "uppercase" }}>{badge}</span>
+                    <p style={{ fontSize: 12, color: "rgba(216,195,180,0.7)", lineHeight: 1.6, minHeight: "3rem" }}>{email.subject}</p>
+                    <div className="flex gap-4 mt-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                      <button type="button" onClick={() => allowSender(email.from[1])} className="hover:underline"
+                        style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase", color: "#FFB77B" }}>
+                        Allow
+                      </button>
+                      <button type="button" onClick={() => blockSender(email.from[1])} className="hover:opacity-70"
+                        style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase", color: "rgba(216,195,180,0.6)" }}>
+                        Block
+                      </button>
                     </div>
                   </div>
-                  <p style={{ fontSize: 12, color: "rgba(216,195,180,0.7)", lineHeight: 1.6, minHeight: "3rem" }}>{preview}</p>
-                  <div className="flex gap-4 mt-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                    <button type="button" className="hover:underline transition-colors" style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase", color: "#FFB77B" }}>
-                      Allow
-                    </button>
-                    <button type="button" className="transition-colors hover:opacity-70" style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase", color: "rgba(216,195,180,0.6)" }}>
-                      Block
-                    </button>
-                  </div>
-                </div>
-              ))}
-            </div>
-          </section>
+                ))}
+              </div>
+            </section>
+          )}
 
           {/* Inbox section */}
           <section
