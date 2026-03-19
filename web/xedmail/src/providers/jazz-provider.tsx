@@ -4,6 +4,7 @@ import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { useClerk, useUser } from "@clerk/nextjs";
 import {
   AuthSecretStorage,
+  co,
   InMemoryKVStore,
   JazzClerkAuth,
   isClerkCredentials,
@@ -179,17 +180,16 @@ function JazzInboxStateProvider({ children }: { children: React.ReactNode }) {
       const existingState = me.root.inboxState;
       if (existingState) {
         // Initialize missing lists for users who had inboxState before this feature
-        if (!existingState.$jazz.has("senderRules")) {
+        if (!existingState.senderRules) {
           existingState.$jazz.set(
             "senderRules",
-            // jazz-tools v0.20: co.list(JazzSenderRule).create([], { owner })
-            (JazzSenderRule as any).createList([], { owner }),
+            co.list(JazzSenderRule).create([], { owner }),
           );
         }
-        if (!existingState.$jazz.has("scheduledEmails")) {
+        if (!existingState.scheduledEmails) {
           existingState.$jazz.set(
             "scheduledEmails",
-            (JazzScheduledEmail as any).createList([], { owner }),
+            co.list(JazzScheduledEmail).create([], { owner }),
           );
         }
         return existingState;
