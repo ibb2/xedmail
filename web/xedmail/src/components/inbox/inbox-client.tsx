@@ -18,6 +18,8 @@ interface Email {
   date: string;
   isRead: boolean;
   isNew?: boolean;
+  snoozedUntil?: string;
+  isArchived?: boolean;
 }
 
 function getEmailKey(email: Pick<Email, "mailboxAddress" | "uid">) {
@@ -330,7 +332,7 @@ export default function InboxClient({
   const [isReaderOpen, setIsReaderOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<(typeof TABS)[number]>("Focused");
   const [localQuery, setLocalQuery] = useState(query);
-  const { updateMessageReadStatus, clearMessageNewStatus } = useJazzInboxState();
+  const { updateMessageReadStatus, clearMessageNewStatus, archiveMessage, snoozeMessage, senderRules } = useJazzInboxState();
   const { getToken } = useAuth();
   const { user } = useUser();
   const router = useRouter();
@@ -340,10 +342,22 @@ export default function InboxClient({
     [emails],
   );
 
+  const blockedAddresses = React.useMemo(
+    () => new Set(senderRules.filter((r) => r.rule === "block").map((r) => r.address)),
+    [senderRules],
+  );
+
   const filteredEmails = useMemo(() => {
-    if (activeTab === "Unread") return sortedEmails.filter((e) => !e.isRead);
-    return sortedEmails;
-  }, [sortedEmails, activeTab]);
+    const now = new Date();
+    let result = sortedEmails.filter((e) => {
+      if (e.isArchived) return false;
+      if (e.snoozedUntil && new Date(e.snoozedUntil) > now) return false;
+      if (blockedAddresses.has(e.from[1])) return false;
+      return true;
+    });
+    if (activeTab === "Unread") result = result.filter((e) => !e.isRead);
+    return result;
+  }, [sortedEmails, activeTab, blockedAddresses]);
 
   const unreadCount = sortedEmails.filter((e) => !e.isRead).length;
 
@@ -390,6 +404,44 @@ export default function InboxClient({
     setIsReaderOpen(false);
     setBody("");
   };
+
+  const handleArchive = React.useCallback(async () => {
+    if (!selectedEmail) return;
+    const token = await getToken();
+    const response = await fetch(
+      `/api/mail/emails/mailbox/${encodeURIComponent(selectedEmail.mailboxAddress)}/${selectedEmail.uid}/archive`,
+      { method: "POST", headers: { Authorization: `Bearer ${token}` } },
+    );
+    if (response.ok) {
+      archiveMessage({ uid: selectedEmail.uid, mailboxAddress: selectedEmail.mailboxAddress });
+      closeReader();
+    }
+  }, [selectedEmail, getToken, archiveMessage, closeReader]);
+
+  const [isSnoozeOpen, setIsSnoozeOpen] = useState(false);
+
+  function getSnoozeDate(preset: "today" | "tomorrow" | "nextWeek"): Date {
+    const d = new Date();
+    if (preset === "today") { d.setHours(d.getHours() + 3); return d; }
+    if (preset === "tomorrow") { d.setDate(d.getDate() + 1); d.setHours(9, 0, 0, 0); return d; }
+    const day = d.getDay();
+    const daysUntilMonday = day === 0 ? 1 : 8 - day;
+    d.setDate(d.getDate() + daysUntilMonday);
+    d.setHours(9, 0, 0, 0);
+    return d;
+  }
+
+  const handleSnooze = (until: Date) => {
+    if (!selectedEmail) return;
+    snoozeMessage(
+      { uid: selectedEmail.uid, mailboxAddress: selectedEmail.mailboxAddress },
+      until.toISOString(),
+    );
+    setIsSnoozeOpen(false);
+    closeReader();
+  };
+
+  const openReply = React.useCallback(() => {}, []);
 
   return (
     <div
@@ -725,23 +777,96 @@ export default function InboxClient({
           border: "1px solid rgba(82,68,57,0.2)",
         }}
       >
-        {[
-          { icon: "archive", label: "Archive" },
-          { icon: "schedule", label: "Snooze" },
-          { icon: "reply", label: "Reply" },
-        ].map(({ icon, label }) => (
-          <a
-            key={label}
-            href="#"
+        {/* Archive */}
+        <button
+          type="button"
+          onClick={handleArchive}
+          disabled={!selectedEmail}
+          className="flex flex-col items-center justify-center transition-all"
+          style={{
+            padding: "8px 16px", borderRadius: "0.75rem",
+            color: selectedEmail ? "rgba(229,226,225,0.7)" : "rgba(229,226,225,0.3)",
+            cursor: selectedEmail ? "pointer" : "not-allowed",
+          }}
+          onMouseEnter={(e) => { if (selectedEmail) { e.currentTarget.style.background = "#353535"; e.currentTarget.style.color = "#E5E2E1"; } }}
+          onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = selectedEmail ? "rgba(229,226,225,0.7)" : "rgba(229,226,225,0.3)"; }}
+        >
+          <span className="material-symbols-outlined" style={{ fontSize: 20, marginBottom: 4 }}>archive</span>
+          <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 9, letterSpacing: "0.05em", textTransform: "uppercase" }}>Archive</span>
+        </button>
+
+        {/* Snooze */}
+        <div className="relative">
+          <button
+            type="button"
+            onClick={() => selectedEmail && setIsSnoozeOpen((o) => !o)}
+            disabled={!selectedEmail}
             className="flex flex-col items-center justify-center transition-all"
-            style={{ padding: "8px 16px", color: "rgba(229,226,225,0.7)", borderRadius: "0.75rem" }}
-            onMouseEnter={(e) => { e.currentTarget.style.background = "#353535"; e.currentTarget.style.color = "#E5E2E1"; }}
-            onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "rgba(229,226,225,0.7)"; }}
+            style={{
+              padding: "8px 16px", borderRadius: "0.75rem",
+              color: selectedEmail ? "rgba(229,226,225,0.7)" : "rgba(229,226,225,0.3)",
+              cursor: selectedEmail ? "pointer" : "not-allowed",
+            }}
+            onMouseEnter={(e) => { if (selectedEmail) { e.currentTarget.style.background = "#353535"; e.currentTarget.style.color = "#E5E2E1"; } }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = selectedEmail ? "rgba(229,226,225,0.7)" : "rgba(229,226,225,0.3)"; }}
           >
-            <span className="material-symbols-outlined" style={{ fontSize: 20, marginBottom: 4 }}>{icon}</span>
-            <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 9, letterSpacing: "0.05em", textTransform: "uppercase" }}>{label}</span>
-          </a>
-        ))}
+            <span className="material-symbols-outlined" style={{ fontSize: 20, marginBottom: 4 }}>schedule</span>
+            <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 9, letterSpacing: "0.05em", textTransform: "uppercase" }}>Snooze</span>
+          </button>
+
+          {isSnoozeOpen && (
+            <div
+              className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2"
+              style={{ background: "#1C1B1B", border: "1px solid rgba(82,68,57,0.3)", borderRadius: "0.75rem", padding: 12, minWidth: 176, zIndex: 60 }}
+            >
+              {([
+                { label: "Later today", fn: () => handleSnooze(getSnoozeDate("today")) },
+                { label: "Tomorrow", fn: () => handleSnooze(getSnoozeDate("tomorrow")) },
+                { label: "Next week", fn: () => handleSnooze(getSnoozeDate("nextWeek")) },
+              ] as const).map(({ label, fn }) => (
+                <button
+                  key={label} type="button" onClick={fn}
+                  className="block w-full text-left transition-opacity hover:opacity-70"
+                  style={{ padding: "6px 8px", fontSize: 12, color: "#E5E2E1", borderRadius: "0.5rem" }}
+                >
+                  {label}
+                </button>
+              ))}
+              {/* Custom date/time picker */}
+              <div style={{ borderTop: "1px solid rgba(82,68,57,0.2)", marginTop: 8, paddingTop: 8 }}>
+                <label style={{ fontSize: 10, color: "#D8C3B4", fontFamily: "'JetBrains Mono', monospace", textTransform: "uppercase", letterSpacing: "0.05em", display: "block", marginBottom: 4 }}>
+                  Custom
+                </label>
+                <input
+                  type="datetime-local"
+                  min={new Date().toISOString().slice(0, 16)}
+                  onChange={(e) => {
+                    if (e.target.value) handleSnooze(new Date(e.target.value));
+                  }}
+                  style={{ background: "#131313", border: "1px solid rgba(82,68,57,0.3)", borderRadius: "0.5rem", padding: "4px 8px", fontSize: 11, color: "#E5E2E1", width: "100%", outline: "none" }}
+                />
+              </div>
+            </div>
+          )}
+        </div>
+
+        {/* Reply — wired in Task 14 */}
+        <button
+          type="button"
+          onClick={openReply}
+          disabled={!selectedEmail}
+          className="flex flex-col items-center justify-center transition-all"
+          style={{
+            padding: "8px 16px", borderRadius: "0.75rem",
+            color: selectedEmail ? "rgba(229,226,225,0.7)" : "rgba(229,226,225,0.3)",
+            cursor: selectedEmail ? "pointer" : "not-allowed",
+          }}
+          onMouseEnter={(e) => { if (selectedEmail) { e.currentTarget.style.background = "#353535"; e.currentTarget.style.color = "#E5E2E1"; } }}
+          onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = selectedEmail ? "rgba(229,226,225,0.7)" : "rgba(229,226,225,0.3)"; }}
+        >
+          <span className="material-symbols-outlined" style={{ fontSize: 20, marginBottom: 4 }}>reply</span>
+          <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 9, letterSpacing: "0.05em", textTransform: "uppercase" }}>Reply</span>
+        </button>
       </nav>
 
       {/* ── FAB compose ── */}
