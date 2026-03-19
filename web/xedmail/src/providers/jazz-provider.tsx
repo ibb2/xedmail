@@ -177,6 +177,8 @@ function JazzInboxStateProvider({ children }: { children: React.ReactNode }) {
           folders: [],
           messages: [],
           lastSyncedAt: new Date().toISOString(),
+          senderRules: [],
+          scheduledEmails: [],
         },
         { owner },
       );

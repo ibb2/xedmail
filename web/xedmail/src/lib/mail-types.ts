@@ -32,6 +32,8 @@ export type EmailDto = {
   date: string;
   isRead: boolean;
   isNew?: boolean;
+  snoozedUntil?: string;   // new
+  isArchived?: boolean;    // new
 };
 
 export type OAuthState = {
