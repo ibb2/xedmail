@@ -418,6 +418,15 @@ export default function InboxClient({
     }
   }, [selectedEmail, getToken, archiveMessage, closeReader]);
 
+  const [isComposeOpen, setIsComposeOpen] = useState(false);
+  const [composeTo, setComposeTo] = useState("");
+  const [composeSubject, setComposeSubject] = useState("");
+  const [composeBody, setComposeBody] = useState("");
+  const [composeError, setComposeError] = useState<string | null>(null);
+  const [composeReplyTo, setComposeReplyTo] = useState<string | undefined>();
+  const [composeSending, setComposeSending] = useState(false);
+  const [isSendLaterOpen, setIsSendLaterOpen] = useState(false);
+
   const [isSnoozeOpen, setIsSnoozeOpen] = useState(false);
 
   function getSnoozeDate(preset: "today" | "tomorrow" | "nextWeek"): Date {
@@ -441,7 +450,78 @@ export default function InboxClient({
     closeReader();
   };
 
-  const openReply = React.useCallback(() => {}, []);
+  const openReply = React.useCallback(() => {
+    if (!selectedEmail) return;
+    setComposeTo(selectedEmail.from[1]);
+    const subject = selectedEmail.subject.startsWith("Re:")
+      ? selectedEmail.subject
+      : `Re: ${selectedEmail.subject}`;
+    setComposeSubject(subject);
+    setComposeBody(`\n\n---\n${body}`); // body = current reader body state
+    setComposeReplyTo(selectedEmail.id);
+    setComposeError(null);
+    setIsComposeOpen(true);
+  }, [selectedEmail, body]);
+
+  const handleSend = async () => {
+    if (!selectedEmail) return;
+    setComposeSending(true);
+    setComposeError(null);
+    try {
+      const token = await getToken();
+      const res = await fetch("/api/mail/emails/send", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          mailbox: selectedEmail.mailboxAddress,
+          to: composeTo, subject: composeSubject, body: composeBody,
+          inReplyTo: composeReplyTo, references: composeReplyTo,
+        }),
+      });
+      const result = await res.json();
+      if (result.error === "INSUFFICIENT_SCOPE") {
+        setComposeError("Reconnect your mailbox in Settings to enable sending.");
+      } else if (result.error) {
+        setComposeError(result.error);
+      } else {
+        setIsComposeOpen(false);
+      }
+    } catch {
+      setComposeError("Network error. Please try again.");
+    } finally {
+      setComposeSending(false);
+    }
+  };
+
+  const handleScheduleSend = async (sendAt: Date) => {
+    if (!selectedEmail) return;
+    setComposeSending(true);
+    setComposeError(null);
+    try {
+      const token = await getToken();
+      const res = await fetch("/api/mail/emails/schedule", {
+        method: "POST",
+        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          mailbox: selectedEmail.mailboxAddress,
+          to: composeTo, subject: composeSubject, body: composeBody,
+          inReplyTo: composeReplyTo, references: composeReplyTo,
+          sendAt: sendAt.toISOString(),
+        }),
+      });
+      const result = await res.json();
+      if (result.error) {
+        setComposeError(result.error);
+      } else {
+        setIsComposeOpen(false);
+        setIsSendLaterOpen(false);
+      }
+    } catch {
+      setComposeError("Network error. Please try again.");
+    } finally {
+      setComposeSending(false);
+    }
+  };
 
   return (
     <div
@@ -884,6 +964,86 @@ export default function InboxClient({
       >
         <span className="material-symbols-outlined" style={{ fontSize: 22 }}>edit</span>
       </button>
+
+      {isComposeOpen && (
+        <div className="fixed inset-0 z-50 flex flex-col overflow-hidden" style={{ background: "#131313", fontFamily: "'Inter', sans-serif" }}>
+          <nav
+            className="fixed top-0 left-0 w-full flex justify-between items-center px-6 py-3"
+            style={{ background: "rgba(19,19,19,0.8)", backdropFilter: "blur(20px)", zIndex: 50 }}
+          >
+            <span style={{ fontFamily: "'Newsreader', serif", fontSize: 20, fontWeight: 500, color: "#E5E2E1" }}>New Message</span>
+            <button
+              type="button"
+              onClick={() => {
+                if (composeBody.trim() && !window.confirm("Discard this message?")) return;
+                setIsComposeOpen(false);
+              }}
+              style={{ color: "#D8C3B4" }}
+            >
+              <span className="material-symbols-outlined">close</span>
+            </button>
+          </nav>
+
+          <main style={{ maxWidth: 768, margin: "0 auto", width: "100%", padding: "96px 24px 24px" }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
+              <input
+                type="email" placeholder="To" value={composeTo}
+                onChange={(e) => setComposeTo(e.target.value)}
+                style={{ background: "#1C1B1B", border: "1px solid rgba(82,68,57,0.3)", borderRadius: "0.5rem", padding: "10px 14px", color: "#E5E2E1", fontSize: 14, outline: "none" }}
+              />
+              <input
+                type="text" placeholder="Subject" value={composeSubject}
+                onChange={(e) => setComposeSubject(e.target.value)}
+                style={{ background: "#1C1B1B", border: "1px solid rgba(82,68,57,0.3)", borderRadius: "0.5rem", padding: "10px 14px", color: "#E5E2E1", fontSize: 14, outline: "none" }}
+              />
+              <textarea
+                placeholder="Write your message…" value={composeBody} rows={14}
+                onChange={(e) => setComposeBody(e.target.value)}
+                style={{ background: "#1C1B1B", border: "1px solid rgba(82,68,57,0.3)", borderRadius: "0.5rem", padding: "10px 14px", color: "#E5E2E1", fontSize: 14, outline: "none", resize: "vertical" }}
+              />
+              {composeError && <p style={{ fontSize: 12, color: "#FFB77B" }}>{composeError}</p>}
+              <div className="flex gap-3 items-center">
+                <button
+                  type="button" onClick={handleSend} disabled={composeSending}
+                  style={{ background: "linear-gradient(135deg, #FFB77B, #C8803F)", color: "#4D2700", padding: "10px 24px", borderRadius: "0.75rem", fontWeight: 600, fontSize: 13, opacity: composeSending ? 0.6 : 1 }}
+                >
+                  {composeSending ? "Sending…" : "Send"}
+                </button>
+                <div className="relative">
+                  <button
+                    type="button" disabled={composeSending}
+                    onClick={() => setIsSendLaterOpen((o) => !o)}
+                    style={{ background: "#1C1B1B", border: "1px solid rgba(82,68,57,0.3)", color: "#D8C3B4", padding: "10px 16px", borderRadius: "0.75rem", fontSize: 13 }}
+                  >
+                    Send Later
+                  </button>
+                  {isSendLaterOpen && (
+                    <div style={{ position: "absolute", bottom: "calc(100% + 8px)", left: 0, background: "#1C1B1B", border: "1px solid rgba(82,68,57,0.3)", borderRadius: "0.75rem", padding: 12, minWidth: 176, zIndex: 60 }}>
+                      {([
+                        { label: "Later today", fn: () => handleScheduleSend(getSnoozeDate("today")) },
+                        { label: "Tomorrow", fn: () => handleScheduleSend(getSnoozeDate("tomorrow")) },
+                        { label: "Next week", fn: () => handleScheduleSend(getSnoozeDate("nextWeek")) },
+                      ] as const).map(({ label, fn }) => (
+                        <button key={label} type="button" onClick={fn} className="block w-full text-left hover:opacity-70"
+                          style={{ padding: "6px 8px", fontSize: 12, color: "#E5E2E1", borderRadius: "0.5rem" }}>
+                          {label}
+                        </button>
+                      ))}
+                      <div style={{ borderTop: "1px solid rgba(82,68,57,0.2)", marginTop: 8, paddingTop: 8 }}>
+                        <label style={{ fontSize: 10, color: "#D8C3B4", fontFamily: "'JetBrains Mono', monospace", textTransform: "uppercase", display: "block", marginBottom: 4 }}>Custom</label>
+                        <input type="datetime-local" min={new Date().toISOString().slice(0, 16)}
+                          onChange={(e) => { if (e.target.value) handleScheduleSend(new Date(e.target.value)); }}
+                          style={{ background: "#131313", border: "1px solid rgba(82,68,57,0.3)", borderRadius: "0.5rem", padding: "4px 8px", fontSize: 11, color: "#E5E2E1", width: "100%", outline: "none" }}
+                        />
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </main>
+        </div>
+      )}
     </div>
   );
 }
