@@ -4,7 +4,7 @@ import { ClerkProvider } from "@clerk/nextjs";
 import { JazzProvider } from "@/providers/jazz-provider";
 
 export const metadata: Metadata = {
-  title: "Atelier Mail",
+  title: "June",
   description: "A search-first email client",
 };
 

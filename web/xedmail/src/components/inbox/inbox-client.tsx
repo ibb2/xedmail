@@ -181,7 +181,7 @@ function EmailReader({
                 style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, color: "#FFB77B" }}
               >
                 <span className="material-symbols-outlined" style={{ fontSize: 12, fontVariationSettings: "'FILL' 1" }}>verified</span>
-                ENCRYPTED.ATELIER
+                ENCRYPTED.JUNE
               </span>
               <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, color: "#D8C3B4" }}>
                 {dateStr}

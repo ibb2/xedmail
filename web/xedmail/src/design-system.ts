@@ -1,4 +1,4 @@
-// June Design System — Atelier Mail
+// June Design System — June Mail
 // Design tokens extracted from the June/Stitch design spec
 
 export const colors = {

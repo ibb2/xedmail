@@ -38,7 +38,7 @@ type JazzInboxContextValue = {
 };
 
 const JazzInboxContext = createContext<JazzInboxContextValue | null>(null);
-const JAZZ_AUTH_SECRET_STORAGE_KEY = "xedmail-jazz-auth-secret";
+const JAZZ_AUTH_SECRET_STORAGE_KEY = "june-jazz-auth-secret";
 
 function getSyncConfig() {
   const peer = process.env.NEXT_PUBLIC_JAZZ_SYNC_PEER;
