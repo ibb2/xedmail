@@ -1,14 +1,17 @@
 import { NextResponse } from "next/server";
-import { buildRfc2822, encodeMessage } from "@/lib/mail-compose";
 import { getValidMailboxForUser } from "@/lib/mail-auth";
+import { buildRfc2822, encodeMessage } from "@/lib/mail-compose";
 import {
-  claimDueScheduledEmails, clearScheduledEmailLock,
-  markScheduledEmailSent, resetStuckScheduledEmails,
+  claimDueScheduledEmails,
+  clearScheduledEmailLock,
+  markScheduledEmailSent,
+  resetStuckScheduledEmails,
 } from "@/lib/mail-store";
 
 export const runtime = "nodejs";
 
-const GMAIL_SEND_URL = "https://gmail.googleapis.com/gmail/v1/users/me/messages/send";
+const GMAIL_SEND_URL =
+  "https://gmail.googleapis.com/gmail/v1/users/me/messages/send";
 
 export async function GET(request: Request) {
   const authHeader = request.headers.get("authorization");
@@ -29,20 +32,24 @@ export async function GET(request: Request) {
   let sent = 0;
   for (const row of rows) {
     try {
-      const { mailbox: mailboxRecord, accessToken } = await getValidMailboxForUser(
-        row.clerkUserId, row.mailboxAddress,
-      );
+      const { mailbox: mailboxRecord, accessToken } =
+        await getValidMailboxForUser(row.clerkUserId, row.mailboxAddress);
 
       const raw = buildRfc2822({
         from: mailboxRecord.emailAddress,
-        to: row.toAddress, subject: row.subject, body: row.body,
+        to: row.toAddress,
+        subject: row.subject,
+        body: row.body,
         inReplyTo: row.inReplyTo ?? undefined,
         references: row.references ?? undefined,
       });
 
       const response = await fetch(GMAIL_SEND_URL, {
         method: "POST",
-        headers: { Authorization: `Bearer ${accessToken}`, "Content-Type": "application/json" },
+        headers: {
+          Authorization: `Bearer ${accessToken}`,
+          "Content-Type": "application/json",
+        },
         body: JSON.stringify({ raw: encodeMessage(raw) }),
       });
 

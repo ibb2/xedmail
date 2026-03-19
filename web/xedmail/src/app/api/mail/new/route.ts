@@ -15,20 +15,24 @@ export async function GET(request: Request) {
   const mailbox = searchParams.get("mailbox");
 
   if (!mailbox || minUidParam === null) {
-    return NextResponse.json({ error: "minUid and mailbox are required" }, { status: 400 });
+    return NextResponse.json(
+      { error: "minUid and mailbox are required" },
+      { status: 400 },
+    );
   }
 
   const minUid = parseInt(minUidParam, 10);
   if (Number.isNaN(minUid)) {
-    return NextResponse.json({ error: "minUid must be an integer" }, { status: 400 });
+    return NextResponse.json(
+      { error: "minUid must be an integer" },
+      { status: 400 },
+    );
   }
 
   try {
     const clerkUserId = await requireClerkUserId();
-    const { mailbox: mailboxRecord, accessToken } = await getValidMailboxForUser(
-      clerkUserId,
-      decodeURIComponent(mailbox),
-    );
+    const { mailbox: mailboxRecord, accessToken } =
+      await getValidMailboxForUser(clerkUserId, decodeURIComponent(mailbox));
 
     const emails: EmailDto[] = await withImapClient(
       { email: mailboxRecord.emailAddress, accessToken },
@@ -44,7 +48,10 @@ export async function GET(request: Request) {
             const envelope = msg.envelope;
             const from = envelope?.from?.[0];
             const to =
-              envelope?.to?.map((e: { address?: string }) => e.address).filter(Boolean).join(", ") ?? "unknown";
+              envelope?.to
+                ?.map((e: { address?: string }) => e.address)
+                .filter(Boolean)
+                .join(", ") ?? "unknown";
             const date = msg.internalDate
               ? new Date(msg.internalDate).toISOString()
               : new Date().toISOString();
@@ -77,6 +84,9 @@ export async function GET(request: Request) {
     if (error instanceof Error && error.message === "MAILBOX_NOT_FOUND") {
       return NextResponse.json({ error: "Mailbox not found" }, { status: 404 });
     }
-    return NextResponse.json({ error: "Failed to fetch new messages" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Failed to fetch new messages" },
+      { status: 500 },
+    );
   }
 }

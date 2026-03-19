@@ -9,7 +9,9 @@ export async function GET() {
     const clerkUserId = await requireClerkUserId();
     const rows = await getUnsentScheduledEmailsForUser(clerkUserId);
     const scheduled = rows.map((row) => ({
-      id: row.id, to: row.toAddress, subject: row.subject,
+      id: row.id,
+      to: row.toAddress,
+      subject: row.subject,
       sendAt: new Date(row.sendAt).toISOString(),
     }));
     return NextResponse.json({ scheduled });
@@ -17,6 +19,9 @@ export async function GET() {
     if (error instanceof Error && error.message === "UNAUTHORIZED") {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
-    return NextResponse.json({ error: "Failed to fetch scheduled emails" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Failed to fetch scheduled emails" },
+      { status: 500 },
+    );
   }
 }

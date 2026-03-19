@@ -15,14 +15,15 @@ export async function POST(_request: Request, context: Context) {
 
   try {
     const clerkUserId = await requireClerkUserId();
-    const { mailbox: mailboxRecord, accessToken } = await getValidMailboxForUser(
-      clerkUserId,
-      decodedMailbox,
-    );
+    const { mailbox: mailboxRecord, accessToken } =
+      await getValidMailboxForUser(clerkUserId, decodedMailbox);
 
     const imapHost = process.env.IMAP_HOST ?? "imap.gmail.com";
     if (imapHost !== "imap.gmail.com") {
-      return NextResponse.json({ error: "Unsupported provider" }, { status: 400 });
+      return NextResponse.json(
+        { error: "Unsupported provider" },
+        { status: 400 },
+      );
     }
 
     await archiveEmail({ email: mailboxRecord.emailAddress, accessToken }, uid);
@@ -35,6 +36,9 @@ export async function POST(_request: Request, context: Context) {
     if (error instanceof Error && error.message === "MAILBOX_NOT_FOUND") {
       return NextResponse.json({ error: "Mailbox not found" }, { status: 404 });
     }
-    return NextResponse.json({ error: "Failed to archive message" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Failed to archive message" },
+      { status: 500 },
+    );
   }
 }

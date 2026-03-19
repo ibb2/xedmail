@@ -1,4 +1,4 @@
-import { randomUUID } from "crypto";
+import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
 import { requireClerkUserId } from "@/lib/api-auth";
 import { getValidMailboxForUser } from "@/lib/mail-auth";
@@ -8,20 +8,32 @@ export const runtime = "nodejs";
 
 export async function POST(request: Request) {
   try {
-    const body = await request.json() as {
-      mailbox: string; to: string; subject: string; body: string;
-      inReplyTo?: string; references?: string; sendAt: string;
+    const body = (await request.json()) as {
+      mailbox: string;
+      to: string;
+      subject: string;
+      body: string;
+      inReplyTo?: string;
+      references?: string;
+      sendAt: string;
     };
 
     const clerkUserId = await requireClerkUserId();
-    const { mailbox: mailboxRecord } = await getValidMailboxForUser(clerkUserId, body.mailbox);
+    const { mailbox: mailboxRecord } = await getValidMailboxForUser(
+      clerkUserId,
+      body.mailbox,
+    );
 
     const id = randomUUID();
     await insertScheduledEmail({
-      id, clerkUserId,
+      id,
+      clerkUserId,
       mailboxAddress: mailboxRecord.emailAddress,
-      toAddress: body.to, subject: body.subject, body: body.body,
-      inReplyTo: body.inReplyTo ?? null, references: body.references ?? null,
+      toAddress: body.to,
+      subject: body.subject,
+      body: body.body,
+      inReplyTo: body.inReplyTo ?? null,
+      references: body.references ?? null,
       sendAt: Date.parse(body.sendAt), // ISO string → unix ms
     });
 
@@ -33,6 +45,9 @@ export async function POST(request: Request) {
     if (error instanceof Error && error.message === "MAILBOX_NOT_FOUND") {
       return NextResponse.json({ error: "Mailbox not found" }, { status: 404 });
     }
-    return NextResponse.json({ error: "Failed to schedule message" }, { status: 500 });
+    return NextResponse.json(
+      { error: "Failed to schedule message" },
+      { status: 500 },
+    );
   }
 }
