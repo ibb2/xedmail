@@ -240,3 +240,123 @@ export function toMailboxDto(mailbox: MailboxRecord): MailboxDto {
     image: mailbox.image,
   };
 }
+
+export type ScheduledEmailRecord = {
+  id: string;
+  clerkUserId: string;
+  mailboxAddress: string;
+  toAddress: string;
+  subject: string;
+  body: string;
+  inReplyTo: string | null;
+  references: string | null;
+  sendAt: number; // unix ms
+  sent: boolean;
+  sending: boolean;
+};
+
+function rowToScheduledEmail(row: Row): ScheduledEmailRecord {
+  return {
+    id: String(row.id),
+    clerkUserId: String(row.clerk_user_id),
+    mailboxAddress: String(row.mailbox_address),
+    toAddress: String(row.to_address),
+    subject: String(row.subject),
+    body: String(row.body),
+    inReplyTo: row.in_reply_to ? String(row.in_reply_to) : null,
+    references: row.references ? String(row.references) : null,
+    sendAt: Number(row.send_at),
+    sent: Number(row.sent) === 1,
+    sending: Number(row.sending) === 1,
+  };
+}
+
+export async function insertScheduledEmail(opts: {
+  id: string;
+  clerkUserId: string;
+  mailboxAddress: string;
+  toAddress: string;
+  subject: string;
+  body: string;
+  inReplyTo?: string | null;
+  references?: string | null;
+  sendAt: number; // unix ms
+}): Promise<void> {
+  await ensureDatabaseSchema();
+  const db = getDbClient();
+  await db.execute({
+    sql: `
+      INSERT INTO scheduled_emails
+        (id, clerk_user_id, mailbox_address, to_address, subject, body,
+         in_reply_to, references, send_at, sent, sending)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0)
+    `,
+    args: [
+      opts.id, opts.clerkUserId, opts.mailboxAddress, opts.toAddress,
+      opts.subject, opts.body,
+      opts.inReplyTo ?? null, opts.references ?? null, opts.sendAt,
+    ],
+  });
+}
+
+export async function getUnsentScheduledEmailsForUser(
+  clerkUserId: string,
+): Promise<ScheduledEmailRecord[]> {
+  await ensureDatabaseSchema();
+  const db = getDbClient();
+  const result = await db.execute({
+    sql: `SELECT * FROM scheduled_emails WHERE clerk_user_id = ? AND sent = 0 ORDER BY send_at ASC`,
+    args: [clerkUserId],
+  });
+  return result.rows.map(rowToScheduledEmail);
+}
+
+export async function resetStuckScheduledEmails(beforeMs: number): Promise<void> {
+  await ensureDatabaseSchema();
+  const db = getDbClient();
+  await db.execute({
+    sql: `UPDATE scheduled_emails SET sending = 0 WHERE sent = 0 AND sending = 1 AND send_at <= ?`,
+    args: [beforeMs],
+  });
+}
+
+export async function claimDueScheduledEmails(
+  nowMs: number,
+): Promise<ScheduledEmailRecord[]> {
+  await ensureDatabaseSchema();
+  const db = getDbClient();
+  const tx = await db.transaction("write");
+  try {
+    await tx.execute({
+      sql: `UPDATE scheduled_emails SET sending = 1 WHERE sent = 0 AND sending = 0 AND send_at <= ?`,
+      args: [nowMs],
+    });
+    const result = await tx.execute({
+      sql: `SELECT * FROM scheduled_emails WHERE sent = 0 AND sending = 1 AND send_at <= ?`,
+      args: [nowMs],
+    });
+    await tx.commit();
+    return result.rows.map(rowToScheduledEmail);
+  } catch (error) {
+    await tx.rollback();
+    throw error;
+  }
+}
+
+export async function markScheduledEmailSent(id: string): Promise<void> {
+  await ensureDatabaseSchema();
+  const db = getDbClient();
+  await db.execute({
+    sql: `UPDATE scheduled_emails SET sent = 1, sending = 0 WHERE id = ?`,
+    args: [id],
+  });
+}
+
+export async function clearScheduledEmailLock(id: string): Promise<void> {
+  await ensureDatabaseSchema();
+  const db = getDbClient();
+  await db.execute({
+    sql: `UPDATE scheduled_emails SET sending = 0 WHERE id = ?`,
+    args: [id],
+  });
+}
