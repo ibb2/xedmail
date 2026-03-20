@@ -18,6 +18,7 @@ export const JazzMessage = co.map({
   id: z.string(),
   uid: z.string(),
   mailboxAddress: z.string(),
+  messageId: z.optional(z.string()),
   subject: z.string(),
   fromName: z.string(),
   fromAddress: z.string(),

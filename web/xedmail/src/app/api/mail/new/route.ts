@@ -60,6 +60,7 @@ export async function GET(request: Request) {
               id: `${mailboxRecord.emailAddress}:${msg.uid}`,
               uid: String(msg.uid),
               mailboxAddress: mailboxRecord.emailAddress,
+              messageId: envelope?.messageId ?? undefined,
               subject: envelope?.subject ?? "(No Subject)",
               from: [from?.name ?? "Unknown", from?.address ?? "unknown"],
               to,

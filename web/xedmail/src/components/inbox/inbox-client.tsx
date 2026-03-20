@@ -11,6 +11,7 @@ interface Email {
   id: string;
   uid: string;
   mailboxAddress: string;
+  messageId?: string;
   subject: string;
   from: [string, string];
   to: string;
@@ -338,6 +339,7 @@ export default function InboxClient({
 }) {
   const [selectedEmail, setSelectedEmail] = useState<Email | null>(null);
   const [selectedEmailIndex, setSelectedEmailIndex] = useState<number>(-1);
+  const [focusedIndex, setFocusedIndex] = useState<number>(0);
   const [body, setBody] = useState("");
   const [isReaderOpen, setIsReaderOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<(typeof TABS)[number]>("Focused");
@@ -383,6 +385,26 @@ export default function InboxClient({
   }, [sortedEmails, senderRules]);
 
   const unreadCount = sortedEmails.filter((e) => !e.isRead).length;
+
+  // The "active" email is what the command bar acts on:
+  // if the reader is open, it's the selected email; otherwise, it's the focused email in the list.
+  const focusedEmail = filteredEmails[focusedIndex] ?? null;
+  const activeEmail = isReaderOpen ? selectedEmail : focusedEmail;
+
+  // Reset focused index when filtered list changes
+  React.useEffect(() => {
+    setFocusedIndex((prev) => Math.min(prev, Math.max(0, filteredEmails.length - 1)));
+  }, [filteredEmails.length]);
+
+  // Scroll focused email into view
+  const listRef = React.useRef<HTMLUListElement>(null);
+  React.useEffect(() => {
+    if (isReaderOpen || focusedIndex < 0) return;
+    const list = listRef.current;
+    if (!list) return;
+    const row = list.children[focusedIndex] as HTMLElement | undefined;
+    row?.scrollIntoView({ block: "nearest" });
+  }, [focusedIndex, isReaderOpen]);
 
   const toggleRead = async (email: Email) => {
     if (!email) return;
@@ -432,19 +454,21 @@ export default function InboxClient({
   };
 
   const handleArchive = React.useCallback(async () => {
-    if (!selectedEmail) return;
+    const target = isReaderOpen ? selectedEmail : focusedEmail;
+    if (!target) return;
     const token = await getToken();
     const response = await fetch(
-      `/api/mail/emails/mailbox/${encodeURIComponent(selectedEmail.mailboxAddress)}/${selectedEmail.uid}/archive`,
+      `/api/mail/emails/mailbox/${encodeURIComponent(target.mailboxAddress)}/${target.uid}/archive`,
       { method: "POST", headers: { Authorization: `Bearer ${token}` } },
     );
     if (response.ok) {
-      archiveMessage({ uid: selectedEmail.uid, mailboxAddress: selectedEmail.mailboxAddress });
-      closeReader();
+      archiveMessage({ uid: target.uid, mailboxAddress: target.mailboxAddress });
+      if (isReaderOpen) closeReader();
     }
-  }, [selectedEmail, getToken, archiveMessage, closeReader]);
+  }, [selectedEmail, focusedEmail, isReaderOpen, getToken, archiveMessage, closeReader]);
 
   const [isComposeOpen, setIsComposeOpen] = useState(false);
+  const [composeMailbox, setComposeMailbox] = useState("");
   const [composeTo, setComposeTo] = useState("");
   const [composeSubject, setComposeSubject] = useState("");
   const [composeBody, setComposeBody] = useState("");
@@ -452,6 +476,7 @@ export default function InboxClient({
   const [composeReplyTo, setComposeReplyTo] = useState<string | undefined>();
   const [composeSending, setComposeSending] = useState(false);
   const [isSendLaterOpen, setIsSendLaterOpen] = useState(false);
+  const [composeReturnToInbox, setComposeReturnToInbox] = useState(false);
 
   const [isSnoozeOpen, setIsSnoozeOpen] = useState(false);
 
@@ -467,30 +492,35 @@ export default function InboxClient({
   }
 
   const handleSnooze = (until: Date) => {
-    if (!selectedEmail) return;
+    const target = isReaderOpen ? selectedEmail : focusedEmail;
+    if (!target) return;
     snoozeMessage(
-      { uid: selectedEmail.uid, mailboxAddress: selectedEmail.mailboxAddress },
+      { uid: target.uid, mailboxAddress: target.mailboxAddress },
       until.toISOString(),
     );
     setIsSnoozeOpen(false);
-    closeReader();
+    if (isReaderOpen) closeReader();
   };
 
   const openReply = React.useCallback(() => {
-    if (!selectedEmail) return;
-    setComposeTo(selectedEmail.from[1]);
-    const subject = selectedEmail.subject.startsWith("Re:")
-      ? selectedEmail.subject
-      : `Re: ${selectedEmail.subject}`;
+    const target = isReaderOpen ? selectedEmail : focusedEmail;
+    if (!target) return;
+    setComposeMailbox(target.mailboxAddress);
+    setComposeTo(target.from[1]);
+    const subject = target.subject.startsWith("Re:")
+      ? target.subject
+      : `Re: ${target.subject}`;
     setComposeSubject(subject);
-    setComposeBody(`\n\n---\n${body}`); // body = current reader body state
-    setComposeReplyTo(selectedEmail.id);
+    setComposeBody(isReaderOpen ? `\n\n---\n${body}` : "");
+    setComposeReplyTo(target.messageId);
     setComposeError(null);
+    setComposeReturnToInbox(!isReaderOpen);
+    if (isReaderOpen) closeReader();
     setIsComposeOpen(true);
-  }, [selectedEmail, body]);
+  }, [selectedEmail, focusedEmail, isReaderOpen, body]);
 
   const handleSend = async () => {
-    if (!selectedEmail) return;
+    if (!composeMailbox) return;
     setComposeSending(true);
     setComposeError(null);
     try {
@@ -499,7 +529,7 @@ export default function InboxClient({
         method: "POST",
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
         body: JSON.stringify({
-          mailbox: selectedEmail.mailboxAddress,
+          mailbox: composeMailbox,
           to: composeTo, subject: composeSubject, body: composeBody,
           inReplyTo: composeReplyTo, references: composeReplyTo,
         }),
@@ -520,7 +550,7 @@ export default function InboxClient({
   };
 
   const handleScheduleSend = async (sendAt: Date) => {
-    if (!selectedEmail) return;
+    if (!composeMailbox) return;
     setComposeSending(true);
     setComposeError(null);
     try {
@@ -529,7 +559,7 @@ export default function InboxClient({
         method: "POST",
         headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
         body: JSON.stringify({
-          mailbox: selectedEmail.mailboxAddress,
+          mailbox: composeMailbox,
           to: composeTo, subject: composeSubject, body: composeBody,
           inReplyTo: composeReplyTo, references: composeReplyTo,
           sendAt: sendAt.toISOString(),
@@ -549,9 +579,64 @@ export default function InboxClient({
     }
   };
 
+  // ── Keyboard shortcuts ──
+  React.useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      // Skip when typing in inputs/textareas or compose is open
+      const tag = (e.target as HTMLElement).tagName;
+      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || isComposeOpen) return;
+
+      switch (e.key) {
+        case "j":
+        case "ArrowDown":
+          e.preventDefault();
+          setFocusedIndex((i) => Math.min(i + 1, filteredEmails.length - 1));
+          break;
+        case "k":
+        case "ArrowUp":
+          e.preventDefault();
+          setFocusedIndex((i) => Math.max(i - 1, 0));
+          break;
+        case "Enter":
+          e.preventDefault();
+          if (!isReaderOpen && focusedEmail) {
+            openEmail(focusedEmail, focusedIndex);
+          }
+          break;
+        case "Escape":
+          if (isSnoozeOpen) {
+            setIsSnoozeOpen(false);
+          } else if (isReaderOpen) {
+            closeReader();
+          }
+          break;
+        case "e":
+          e.preventDefault();
+          void handleArchive();
+          break;
+        case "s":
+          if (!e.ctrlKey && !e.metaKey) {
+            e.preventDefault();
+            if (activeEmail) setIsSnoozeOpen((o) => !o);
+          }
+          break;
+        case "r":
+          if (!e.ctrlKey && !e.metaKey) {
+            e.preventDefault();
+            openReply();
+          }
+          break;
+      }
+    };
+
+    window.addEventListener("keydown", handler);
+    return () => window.removeEventListener("keydown", handler);
+  }, [filteredEmails.length, focusedEmail, focusedIndex, isReaderOpen, isComposeOpen, isSnoozeOpen, activeEmail, handleArchive, openReply]);
+
   return (
     <div
       className="flex h-screen flex-col overflow-hidden"
+      tabIndex={-1}
       style={{ background: "#131313", fontFamily: "'Inter', sans-serif", color: "#E5E2E1" }}
     >
       {/* Full-screen reader overlay */}
@@ -795,9 +880,10 @@ export default function InboxClient({
               )}
 
               {/* Rows */}
-              <ul style={{ borderTop: `1px solid rgba(82,68,57,0.05)` }}>
+              <ul ref={listRef} style={{ borderTop: `1px solid rgba(82,68,57,0.05)` }}>
                 {filteredEmails.map((email, index) => {
                   const isSelected = selectedEmail && getEmailKey(selectedEmail) === getEmailKey(email);
+                  const isFocused = index === focusedIndex && !isReaderOpen;
                   const isUnread = !email.isRead;
                   return (
                     <li
@@ -806,11 +892,17 @@ export default function InboxClient({
                       style={{
                         padding: "10px 20px",
                         borderBottom: "1px solid rgba(82,68,57,0.07)",
-                        background: isSelected ? "rgba(255,183,123,0.04)" : "transparent",
+                        background: isFocused
+                          ? "rgba(255,183,123,0.06)"
+                          : isSelected
+                            ? "rgba(255,183,123,0.04)"
+                            : "transparent",
+                        outline: isFocused ? "1px solid rgba(255,183,123,0.15)" : "none",
+                        outlineOffset: "-1px",
                       }}
-                      onClick={() => openEmail(email, index)}
-                      onMouseEnter={(e) => { if (!isSelected) e.currentTarget.style.background = "rgba(255,183,123,0.02)"; }}
-                      onMouseLeave={(e) => { if (!isSelected) e.currentTarget.style.background = "transparent"; }}
+                      onClick={() => { setFocusedIndex(index); openEmail(email, index); }}
+                      onMouseEnter={(e) => { if (!isSelected && !isFocused) e.currentTarget.style.background = "rgba(255,183,123,0.02)"; }}
+                      onMouseLeave={(e) => { if (!isSelected && !isFocused) e.currentTarget.style.background = "transparent"; }}
                     >
                       {/* Unread dot */}
                       <div className="flex-shrink-0 mr-4">
@@ -890,37 +982,37 @@ export default function InboxClient({
         <button
           type="button"
           onClick={handleArchive}
-          disabled={!selectedEmail}
+          disabled={!activeEmail}
           className="flex flex-col items-center justify-center transition-all"
           style={{
             padding: "8px 16px", borderRadius: "0.75rem",
-            color: selectedEmail ? "rgba(229,226,225,0.7)" : "rgba(229,226,225,0.3)",
-            cursor: selectedEmail ? "pointer" : "not-allowed",
+            color: activeEmail ? "rgba(229,226,225,0.7)" : "rgba(229,226,225,0.3)",
+            cursor: activeEmail ? "pointer" : "not-allowed",
           }}
-          onMouseEnter={(e) => { if (selectedEmail) { e.currentTarget.style.background = "#353535"; e.currentTarget.style.color = "#E5E2E1"; } }}
-          onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = selectedEmail ? "rgba(229,226,225,0.7)" : "rgba(229,226,225,0.3)"; }}
+          onMouseEnter={(e) => { if (activeEmail) { e.currentTarget.style.background = "#353535"; e.currentTarget.style.color = "#E5E2E1"; } }}
+          onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = activeEmail ? "rgba(229,226,225,0.7)" : "rgba(229,226,225,0.3)"; }}
         >
           <span className="material-symbols-outlined" style={{ fontSize: 20, marginBottom: 4 }}>archive</span>
-          <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 9, letterSpacing: "0.05em", textTransform: "uppercase" }}>Archive</span>
+          <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 9, letterSpacing: "0.05em", textTransform: "uppercase" }}>Archive <span style={{ opacity: 0.5 }}>E</span></span>
         </button>
 
         {/* Snooze */}
         <div className="relative">
           <button
             type="button"
-            onClick={() => selectedEmail && setIsSnoozeOpen((o) => !o)}
-            disabled={!selectedEmail}
+            onClick={() => activeEmail && setIsSnoozeOpen((o) => !o)}
+            disabled={!activeEmail}
             className="flex flex-col items-center justify-center transition-all"
             style={{
               padding: "8px 16px", borderRadius: "0.75rem",
-              color: selectedEmail ? "rgba(229,226,225,0.7)" : "rgba(229,226,225,0.3)",
-              cursor: selectedEmail ? "pointer" : "not-allowed",
+              color: activeEmail ? "rgba(229,226,225,0.7)" : "rgba(229,226,225,0.3)",
+              cursor: activeEmail ? "pointer" : "not-allowed",
             }}
-            onMouseEnter={(e) => { if (selectedEmail) { e.currentTarget.style.background = "#353535"; e.currentTarget.style.color = "#E5E2E1"; } }}
-            onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = selectedEmail ? "rgba(229,226,225,0.7)" : "rgba(229,226,225,0.3)"; }}
+            onMouseEnter={(e) => { if (activeEmail) { e.currentTarget.style.background = "#353535"; e.currentTarget.style.color = "#E5E2E1"; } }}
+            onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = activeEmail ? "rgba(229,226,225,0.7)" : "rgba(229,226,225,0.3)"; }}
           >
             <span className="material-symbols-outlined" style={{ fontSize: 20, marginBottom: 4 }}>schedule</span>
-            <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 9, letterSpacing: "0.05em", textTransform: "uppercase" }}>Snooze</span>
+            <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 9, letterSpacing: "0.05em", textTransform: "uppercase" }}>Snooze <span style={{ opacity: 0.5 }}>S</span></span>
           </button>
 
           {isSnoozeOpen && (
@@ -959,22 +1051,22 @@ export default function InboxClient({
           )}
         </div>
 
-        {/* Reply — wired in Task 14 */}
+        {/* Reply */}
         <button
           type="button"
           onClick={openReply}
-          disabled={!selectedEmail}
+          disabled={!activeEmail}
           className="flex flex-col items-center justify-center transition-all"
           style={{
             padding: "8px 16px", borderRadius: "0.75rem",
-            color: selectedEmail ? "rgba(229,226,225,0.7)" : "rgba(229,226,225,0.3)",
-            cursor: selectedEmail ? "pointer" : "not-allowed",
+            color: activeEmail ? "rgba(229,226,225,0.7)" : "rgba(229,226,225,0.3)",
+            cursor: activeEmail ? "pointer" : "not-allowed",
           }}
-          onMouseEnter={(e) => { if (selectedEmail) { e.currentTarget.style.background = "#353535"; e.currentTarget.style.color = "#E5E2E1"; } }}
-          onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = selectedEmail ? "rgba(229,226,225,0.7)" : "rgba(229,226,225,0.3)"; }}
+          onMouseEnter={(e) => { if (activeEmail) { e.currentTarget.style.background = "#353535"; e.currentTarget.style.color = "#E5E2E1"; } }}
+          onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = activeEmail ? "rgba(229,226,225,0.7)" : "rgba(229,226,225,0.3)"; }}
         >
           <span className="material-symbols-outlined" style={{ fontSize: 20, marginBottom: 4 }}>reply</span>
-          <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 9, letterSpacing: "0.05em", textTransform: "uppercase" }}>Reply</span>
+          <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 9, letterSpacing: "0.05em", textTransform: "uppercase" }}>Reply <span style={{ opacity: 0.5 }}>R</span></span>
         </button>
       </nav>
 

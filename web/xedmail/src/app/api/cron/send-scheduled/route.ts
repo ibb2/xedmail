@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import { getValidMailboxForUser } from "@/lib/mail-auth";
-import { buildRfc2822, encodeMessage } from "@/lib/mail-compose";
+import { sendMail } from "@/lib/mail-send";
 import {
   claimDueScheduledEmails,
   clearScheduledEmailLock,
@@ -9,9 +9,6 @@ import {
 } from "@/lib/mail-store";
 
 export const runtime = "nodejs";
-
-const GMAIL_SEND_URL =
-  "https://gmail.googleapis.com/gmail/v1/users/me/messages/send";
 
 export async function GET(request: Request) {
   const authHeader = request.headers.get("authorization");
@@ -35,30 +32,18 @@ export async function GET(request: Request) {
       const { mailbox: mailboxRecord, accessToken } =
         await getValidMailboxForUser(row.clerkUserId, row.mailboxAddress);
 
-      const raw = buildRfc2822({
+      await sendMail({
         from: mailboxRecord.emailAddress,
         to: row.toAddress,
         subject: row.subject,
         body: row.body,
+        accessToken,
         inReplyTo: row.inReplyTo ?? undefined,
         references: row.references ?? undefined,
       });
 
-      const response = await fetch(GMAIL_SEND_URL, {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${accessToken}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({ raw: encodeMessage(raw) }),
-      });
-
-      if (response.ok) {
-        await markScheduledEmailSent(row.id);
-        sent++;
-      } else {
-        await clearScheduledEmailLock(row.id); // retry next tick
-      }
+      await markScheduledEmailSent(row.id);
+      sent++;
     } catch {
       await clearScheduledEmailLock(row.id); // retry next tick
     }

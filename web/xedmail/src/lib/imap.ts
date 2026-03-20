@@ -67,6 +67,7 @@ function messageToEmailDto(
     id,
     uid: String(message.uid),
     mailboxAddress,
+    messageId: envelope?.messageId ?? undefined,
     subject,
     from,
     to,

@@ -25,6 +25,7 @@ export type EmailDto = {
   id: string;
   uid: string;
   mailboxAddress: string;
+  messageId?: string;
   subject: string;
   from: [string, string];
   to: string;
@@ -32,8 +33,8 @@ export type EmailDto = {
   date: string;
   isRead: boolean;
   isNew?: boolean;
-  snoozedUntil?: string;   // new
-  isArchived?: boolean;    // new
+  snoozedUntil?: string;
+  isArchived?: boolean;
 };
 
 export type OAuthState = {
