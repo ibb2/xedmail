@@ -1,13 +1,12 @@
 "use client";
 
-import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import { useClerk, useUser } from "@clerk/nextjs";
 import {
   AuthSecretStorage,
   co,
   InMemoryKVStore,
-  JazzClerkAuth,
   isClerkCredentials,
+  JazzClerkAuth,
   KvStoreContext,
 } from "jazz-tools";
 import { LocalStorageKVStore } from "jazz-tools/browser";
@@ -17,11 +16,12 @@ import {
   useAuthSecretStorage,
   useJazzContextValue,
 } from "jazz-tools/react";
+import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import {
   JazzInboxState,
   JazzMailAccount,
-  JazzSenderRule,
   JazzScheduledEmail,
+  JazzSenderRule,
 } from "@/lib/jazz-schema";
 import type { EmailDto, FolderDto, MailboxDto } from "@/lib/mail-types";
 
@@ -29,16 +29,35 @@ type JazzInboxContextValue = {
   messages: EmailDto[];
   folders: FolderDto[];
   mailboxes: MailboxDto[];
-  scheduledEmails: Array<{ id: string; to: string; subject: string; sendAt: string }>;
+  scheduledEmails: Array<{
+    id: string;
+    to: string;
+    subject: string;
+    sendAt: string;
+  }>;
   senderRules: Array<{ address: string; rule: "allow" | "block" }>;
-  syncInbox: (payload: { messages: EmailDto[]; folders: FolderDto[]; mailboxes: MailboxDto[] }) => void;
-  updateMessageReadStatus: (target: Pick<EmailDto, "uid" | "mailboxAddress">, isRead: boolean) => void;
-  clearMessageNewStatus: (target: Pick<EmailDto, "uid" | "mailboxAddress">) => void;
+  syncInbox: (payload: {
+    messages: EmailDto[];
+    folders: FolderDto[];
+    mailboxes: MailboxDto[];
+  }) => void;
+  updateMessageReadStatus: (
+    target: Pick<EmailDto, "uid" | "mailboxAddress">,
+    isRead: boolean,
+  ) => void;
+  clearMessageNewStatus: (
+    target: Pick<EmailDto, "uid" | "mailboxAddress">,
+  ) => void;
   archiveMessage: (target: Pick<EmailDto, "uid" | "mailboxAddress">) => void;
-  snoozeMessage: (target: Pick<EmailDto, "uid" | "mailboxAddress">, until: string | undefined) => void;
+  snoozeMessage: (
+    target: Pick<EmailDto, "uid" | "mailboxAddress">,
+    until: string | undefined,
+  ) => void;
   allowSender: (address: string) => void;
   blockSender: (address: string) => void;
-  syncScheduledEmails: (emails: Array<{ id: string; to: string; subject: string; sendAt: string }>) => void;
+  syncScheduledEmails: (
+    emails: Array<{ id: string; to: string; subject: string; sendAt: string }>,
+  ) => void;
 };
 
 const JazzInboxContext = createContext<JazzInboxContextValue | null>(null);
@@ -55,7 +74,9 @@ function getSyncConfig() {
 
 function hasJazzSyncPeer() {
   const peer = process.env.NEXT_PUBLIC_JAZZ_SYNC_PEER;
-  return Boolean(peer && (peer.startsWith("ws://") || peer.startsWith("wss://")));
+  return Boolean(
+    peer && (peer.startsWith("ws://") || peer.startsWith("wss://")),
+  );
 }
 
 function setupKvStore() {
@@ -105,7 +126,9 @@ function RegisterClerkAuth({
       authSecretStorage,
     );
 
-    const handleUserChange = async (user: typeof clerk.user | null | undefined) => {
+    const handleUserChange = async (
+      user: typeof clerk.user | null | undefined,
+    ) => {
       if (!user) {
         if (authSecretStorage.isAuthenticated) {
           await authSecretStorage.clear();
@@ -118,7 +141,10 @@ function RegisterClerkAuth({
         return;
       }
 
-      if (allowRemoteAccountRestore && isClerkCredentials(user.unsafeMetadata)) {
+      if (
+        allowRemoteAccountRestore &&
+        isClerkCredentials(user.unsafeMetadata)
+      ) {
         await authMethod.logIn(
           user as unknown as Parameters<typeof authMethod.logIn>[0],
         );
@@ -161,8 +187,11 @@ function JazzInboxStateProvider({ children }: { children: React.ReactNode }) {
   const contextValue = useMemo<JazzInboxContextValue>(() => {
     if (!me.$isLoaded) {
       return {
-        messages: [], folders: [], mailboxes: [],
-        scheduledEmails: [], senderRules: [],
+        messages: [],
+        folders: [],
+        mailboxes: [],
+        scheduledEmails: [],
+        senderRules: [],
         syncInbox: () => undefined,
         updateMessageReadStatus: () => undefined,
         clearMessageNewStatus: () => undefined,
@@ -253,10 +282,7 @@ function JazzInboxStateProvider({ children }: { children: React.ReactNode }) {
 
       // Build map of existing messages by key
       const existingMessages = new Map(
-        state.messages.map((m: any) => [
-          `${m.mailboxAddress}:${m.uid}`,
-          m,
-        ]),
+        state.messages.map((m: any) => [`${m.mailboxAddress}:${m.uid}`, m]),
       );
 
       // Merge: start with all existing, add/update from payload
@@ -266,7 +292,7 @@ function JazzInboxStateProvider({ children }: { children: React.ReactNode }) {
         const existing = existingMessages.get(key);
         const isNew = isInitialSync
           ? false
-          : message.isNew ?? existing?.isNew ?? !existing;
+          : (message.isNew ?? existing?.isNew ?? !existing);
         merged.set(key, {
           id: message.id,
           uid: message.uid,
@@ -281,8 +307,12 @@ function JazzInboxStateProvider({ children }: { children: React.ReactNode }) {
           isNew,
           // Preserve Jazz-only fields from existing entry so a re-fetch doesn't
           // reset snooze or archive state for messages already in the cache.
-          ...(existing?.snoozedUntil !== undefined && { snoozedUntil: existing.snoozedUntil }),
-          ...(existing?.isArchived !== undefined && { isArchived: existing.isArchived }),
+          ...(existing?.snoozedUntil !== undefined && {
+            snoozedUntil: existing.snoozedUntil,
+          }),
+          ...(existing?.isArchived !== undefined && {
+            isArchived: existing.isArchived,
+          }),
         });
       }
 
@@ -349,10 +379,13 @@ function JazzInboxStateProvider({ children }: { children: React.ReactNode }) {
       }
     };
 
-    const archiveMessage = (target: Pick<EmailDto, "uid" | "mailboxAddress">) => {
+    const archiveMessage = (
+      target: Pick<EmailDto, "uid" | "mailboxAddress">,
+    ) => {
       const state = ensureInboxState();
       const msg = state.messages.find(
-        (m: any) => m.uid === target.uid && m.mailboxAddress === target.mailboxAddress,
+        (m: any) =>
+          m.uid === target.uid && m.mailboxAddress === target.mailboxAddress,
       );
       if (msg) msg.$jazz.set("isArchived", true);
     };
@@ -363,7 +396,8 @@ function JazzInboxStateProvider({ children }: { children: React.ReactNode }) {
     ) => {
       const state = ensureInboxState();
       const msg = state.messages.find(
-        (m: any) => m.uid === target.uid && m.mailboxAddress === target.mailboxAddress,
+        (m: any) =>
+          m.uid === target.uid && m.mailboxAddress === target.mailboxAddress,
       );
       if (msg) {
         if (until) {
@@ -406,7 +440,12 @@ function JazzInboxStateProvider({ children }: { children: React.ReactNode }) {
     };
 
     const syncScheduledEmails = (
-      emails: Array<{ id: string; to: string; subject: string; sendAt: string }>,
+      emails: Array<{
+        id: string;
+        to: string;
+        subject: string;
+        sendAt: string;
+      }>,
     ) => {
       const state = ensureInboxState();
       state.scheduledEmails?.$jazz.applyDiff(emails);
@@ -419,10 +458,14 @@ function JazzInboxStateProvider({ children }: { children: React.ReactNode }) {
       folders: mapFolders(state),
       mailboxes: mapMailboxes(state),
       scheduledEmails: (state.scheduledEmails ?? []).map((e: any) => ({
-        id: e.id, to: e.to, subject: e.subject, sendAt: e.sendAt,
+        id: e.id,
+        to: e.to,
+        subject: e.subject,
+        sendAt: e.sendAt,
       })),
       senderRules: (state.senderRules ?? []).map((r: any) => ({
-        address: r.address, rule: r.rule as "allow" | "block",
+        address: r.address,
+        rule: r.rule as "allow" | "block",
       })),
       syncInbox,
       updateMessageReadStatus,
