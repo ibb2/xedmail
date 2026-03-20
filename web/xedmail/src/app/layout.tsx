@@ -31,7 +31,6 @@ export default function RootLayout({
         </head>
         <body className="antialiased">
           <JazzProvider>      
-            <JazzInspector />
               {children}
             </JazzProvider>
         </body>
