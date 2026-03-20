@@ -334,6 +334,7 @@ export function SmartSearchBar({
                     color: style.color,
                     background: style.background,
                     padding: style.background ? "2px 4px" : undefined,
+                    margin: style.background ? "-2px -4px" : undefined,
                     borderRadius: style.background ? 4 : undefined,
                   }}
                 >
