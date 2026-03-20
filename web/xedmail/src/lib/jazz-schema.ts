@@ -43,6 +43,11 @@ export const JazzScheduledEmail = co.map({
   sendAt: z.string(), // ISO date string
 });
 
+export const JazzRecentSearch = co.map({
+  query: z.string(),
+  searchedAt: z.string(), // ISO date string
+});
+
 export const JazzInboxState = co.map({
   mailboxes: co.list(JazzMailbox),
   folders: co.list(JazzFolder),
@@ -50,6 +55,7 @@ export const JazzInboxState = co.map({
   lastSyncedAt: z.optional(z.string()),
   senderRules: co.list(JazzSenderRule),
   scheduledEmails: co.list(JazzScheduledEmail),
+  recentSearches: co.list(JazzRecentSearch),
 });
 
 export const JazzMailRoot = co.map({
@@ -80,6 +86,7 @@ export const JazzMailAccount = co.account({
       messages: { $each: true },
       senderRules: { $each: true },
       scheduledEmails: { $each: true },
+      recentSearches: { $each: true },
     },
   },
 });

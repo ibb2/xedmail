@@ -344,7 +344,7 @@ export default function InboxClient({
   const [isReaderOpen, setIsReaderOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<(typeof TABS)[number]>("Focused");
   const [localQuery, setLocalQuery] = useState(query);
-  const { updateMessageReadStatus, clearMessageNewStatus, archiveMessage, snoozeMessage, senderRules, allowSender, blockSender } = useJazzInboxState();
+  const { updateMessageReadStatus, clearMessageNewStatus, archiveMessage, snoozeMessage, senderRules, allowSender, blockSender, addRecentSearch } = useJazzInboxState();
   const { getToken } = useAuth();
   const { user } = useUser();
   const router = useRouter();
@@ -682,6 +682,9 @@ export default function InboxClient({
               onKeyDown={(e) => {
                 if (e.key === "Enter") {
                   const val = (e.target as HTMLInputElement).value.trim();
+                  if (val) {
+                    addRecentSearch(val);
+                  }
                   router.push(val ? `/inbox?query=${encodeURIComponent(val)}` : "/inbox");
                 }
               }}

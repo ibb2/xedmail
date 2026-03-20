@@ -20,6 +20,7 @@ import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import {
   JazzInboxState,
   JazzMailAccount,
+  JazzRecentSearch,
   JazzScheduledEmail,
   JazzSenderRule,
 } from "@/lib/jazz-schema";
@@ -59,6 +60,8 @@ type JazzInboxContextValue = {
   syncScheduledEmails: (
     emails: Array<{ id: string; to: string; subject: string; sendAt: string }>,
   ) => void;
+  recentSearches: Array<{ query: string; searchedAt: string }>;
+  addRecentSearch: (query: string) => void;
 };
 
 const JazzInboxContext = createContext<JazzInboxContextValue | null>(null);
@@ -180,6 +183,7 @@ function JazzInboxStateProvider({ children }: { children: React.ReactNode }) {
           messages: { $each: true },
           senderRules: { $each: true },
           scheduledEmails: { $each: true },
+          recentSearches: { $each: true },
         },
       },
     },
@@ -202,6 +206,8 @@ function JazzInboxStateProvider({ children }: { children: React.ReactNode }) {
         allowSender: () => undefined,
         blockSender: () => undefined,
         syncScheduledEmails: () => undefined,
+        recentSearches: [],
+        addRecentSearch: () => undefined,
       };
     }
 
@@ -223,6 +229,12 @@ function JazzInboxStateProvider({ children }: { children: React.ReactNode }) {
             co.list(JazzScheduledEmail).create([], { owner }),
           );
         }
+        if (!existingState.recentSearches) {
+          existingState.$jazz.set(
+            "recentSearches",
+            co.list(JazzRecentSearch).create([], { owner }),
+          );
+        }
         return existingState;
       }
 
@@ -233,6 +245,7 @@ function JazzInboxStateProvider({ children }: { children: React.ReactNode }) {
           messages: [],
           senderRules: [],
           scheduledEmails: [],
+          recentSearches: [],
           lastSyncedAt: new Date().toISOString(),
         },
         { owner },
@@ -455,6 +468,21 @@ function JazzInboxStateProvider({ children }: { children: React.ReactNode }) {
       state.scheduledEmails?.$jazz.applyDiff(emails);
     };
 
+    const addRecentSearch = (query: string) => {
+      const state = ensureInboxState();
+      const searches = state.recentSearches ?? [];
+      const now = new Date().toISOString();
+
+      // Remove duplicate if exists
+      const filtered = searches
+        .map((s: any) => ({ query: s.query, searchedAt: s.searchedAt }))
+        .filter((s: any) => s.query !== query);
+
+      // Add new search at the front, keep max 10
+      const updated = [{ query, searchedAt: now }, ...filtered].slice(0, 10);
+      searches.$jazz.applyDiff(updated);
+    };
+
     const state = ensureInboxState();
 
     return {
@@ -472,6 +500,10 @@ function JazzInboxStateProvider({ children }: { children: React.ReactNode }) {
         address: r.address,
         rule: r.rule as "allow" | "block",
       })),
+      recentSearches: (state.recentSearches ?? []).map((s: any) => ({
+        query: s.query,
+        searchedAt: s.searchedAt,
+      })),
       syncInbox,
       updateMessageReadStatus,
       clearMessageNewStatus,
@@ -480,6 +512,7 @@ function JazzInboxStateProvider({ children }: { children: React.ReactNode }) {
       allowSender,
       blockSender,
       syncScheduledEmails,
+      addRecentSearch,
     };
   }, [me]);
 

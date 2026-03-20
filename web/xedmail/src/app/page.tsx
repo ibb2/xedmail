@@ -5,12 +5,6 @@ import { useRouter } from "next/navigation";
 import React, { useEffect, useState } from "react";
 import { useJazzInboxState } from "@/providers/jazz-provider";
 
-const RECENT_SEARCHES_DEFAULT = [
-  "Q3 Editorial Strategy",
-  "Contract #882-PDF",
-  "Design System Copper Theme",
-];
-
 const QUICK_FILTERS = [
   { icon: "attach_file", label: "Has Attachment" },
   { icon: "star", label: "Starred" },
@@ -26,9 +20,8 @@ const SUGGESTED_CONTACTS = [
 
 export default function Home() {
   const router = useRouter();
-  const { mailboxes, messages, folders, syncInbox } = useJazzInboxState();
+  const { mailboxes, messages, folders, syncInbox, recentSearches, addRecentSearch } = useJazzInboxState();
   const [ran, setRan] = useState(false);
-  const [recentSearches, setRecentSearches] = useState(RECENT_SEARCHES_DEFAULT);
   const { getToken } = useAuth();
   const { user } = useUser();
 
@@ -67,8 +60,15 @@ export default function Home() {
     }
   }, [ran]);
 
-  const removeSearch = (idx: number) => {
-    setRecentSearches((prev) => prev.filter((_, i) => i !== idx));
+  const formatTimeAgo = (iso: string) => {
+    const diff = Date.now() - new Date(iso).getTime();
+    const mins = Math.floor(diff / 60000);
+    if (mins < 1) return "Just now";
+    if (mins < 60) return `${mins}m ago`;
+    const hours = Math.floor(mins / 60);
+    if (hours < 24) return `${hours}h ago`;
+    const days = Math.floor(hours / 24);
+    return days === 1 ? "Yesterday" : `${days}d ago`;
   };
 
   return (
@@ -174,6 +174,9 @@ export default function Home() {
               onKeyDown={(e) => {
                 if (e.key === "Enter") {
                   const val = (e.target as HTMLInputElement).value.trim();
+                  if (val) {
+                    addRecentSearch(val);
+                  }
                   router.push(val ? `/inbox?query=${encodeURIComponent(val)}` : "/inbox");
                 }
               }}
@@ -231,22 +234,25 @@ export default function Home() {
                 Recent Searches
               </h3>
               <div style={{ display: "flex", flexDirection: "column", gap: 2 }}>
-                {recentSearches.map((s, i) => (
+                {recentSearches.length === 0 && (
+                  <p style={{ padding: "16px", color: "rgba(216,195,180,0.4)", fontSize: 14 }}>No recent searches</p>
+                )}
+                {recentSearches.map((s) => (
                   <a
-                    key={s}
+                    key={s.query}
                     href="#"
                     className="flex items-center justify-between group transition-all"
                     style={{ padding: "16px", borderRadius: "1rem" }}
-                    onClick={(e) => { e.preventDefault(); router.push(`/inbox?query=${encodeURIComponent(s)}`); }}
+                    onClick={(e) => { e.preventDefault(); router.push(`/inbox?query=${encodeURIComponent(s.query)}`); }}
                     onMouseEnter={(e) => (e.currentTarget.style.background = "#1C1B1B")}
                     onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
                   >
                     <div className="flex items-center gap-4">
                       <span className="material-symbols-outlined transition-colors" style={{ color: "rgba(216,195,180,0.4)", fontSize: 20 }}>history</span>
-                      <span style={{ color: "rgba(229,226,225,0.8)", fontSize: 14 }}>{s}</span>
+                      <span style={{ color: "rgba(229,226,225,0.8)", fontSize: 14 }}>{s.query}</span>
                     </div>
                     <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, color: "rgba(216,195,180,0.4)" }}>
-                      {i === 0 ? "2m ago" : i === 1 ? "1h ago" : "Yesterday"}
+                      {formatTimeAgo(s.searchedAt)}
                     </span>
                   </a>
                 ))}
