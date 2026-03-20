@@ -58,11 +58,17 @@ function EmailReader({
   body,
   onClose,
   onToggleRead,
+  emails,
+  emailIndex,
+  onNavigate,
 }: {
   email: Email;
   body: string;
   onClose: () => void;
   onToggleRead: (email: Email) => Promise<void>;
+  emails: Email[];
+  emailIndex: number;
+  onNavigate: (email: Email, index: number) => Promise<void>;
 }) {
   const clean = body ? DOMPurify.sanitize(body) : "";
   const emailDate = new Date(email.date);
@@ -72,9 +78,8 @@ function EmailReader({
     emailDate.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) +
     " PST";
 
-      const { user } = useUser();
-    
-      const firstName = user?.firstName ?? "there";
+  const { user } = useUser();
+  const router = useRouter();
 
   return (
     <div
@@ -105,6 +110,7 @@ function EmailReader({
           </button>
           <button
             type="button"
+            onClick={() => router.push("/settings")}
             className="p-2 transition-colors"
             style={{ color: "#D8C3B4", borderRadius: "0.5rem" }}
             onMouseEnter={(e) => (e.currentTarget.style.color = "#FFB77B")}
@@ -140,25 +146,34 @@ function EmailReader({
         className="flex justify-between items-end"
         style={{ paddingTop: 96, paddingBottom: 32, paddingLeft: 24, paddingRight: 24, maxWidth: 1024, margin: "0 auto", width: "100%" }}
       >
-        <div className="group cursor-pointer" onClick={onClose}>
-          <p
-            style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, letterSpacing: "0.15em", textTransform: "uppercase", color: "#D8C3B4", marginBottom: 8 }}
-          >
+        {/* Previous */}
+        <div
+          className={emailIndex > 0 ? "group cursor-pointer" : "opacity-30 cursor-default"}
+          onClick={() => { if (emailIndex > 0) onNavigate(emails[emailIndex - 1], emailIndex - 1); }}
+        >
+          <p style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, letterSpacing: "0.15em", textTransform: "uppercase", color: "#D8C3B4", marginBottom: 8 }}>
             Previous Message
           </p>
-          <div className="flex items-center gap-3" style={{ color: "rgba(229,226,225,0.4)" }}>
+          <div className="flex items-center gap-3" style={{ color: emailIndex > 0 ? "rgba(229,226,225,0.4)" : "rgba(229,226,225,0.15)" }}>
             <span className="material-symbols-outlined" style={{ fontSize: 18 }}>arrow_back</span>
-            <span style={{ fontFamily: "'Newsreader', serif", fontStyle: "italic", fontSize: 18 }}>Back to Inbox</span>
+            <span style={{ fontFamily: "'Newsreader', serif", fontStyle: "italic", fontSize: 18 }}>
+              {emailIndex > 0 ? (emails[emailIndex - 1].from[0] || emails[emailIndex - 1].subject) : "—"}
+            </span>
           </div>
         </div>
-        <div className="cursor-pointer text-right" onClick={onClose}>
-          <p
-            style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, letterSpacing: "0.15em", textTransform: "uppercase", color: "#D8C3B4", marginBottom: 8 }}
-          >
+
+        {/* Next */}
+        <div
+          className={emailIndex < emails.length - 1 ? "cursor-pointer text-right" : "opacity-30 cursor-default text-right"}
+          onClick={() => { if (emailIndex < emails.length - 1) onNavigate(emails[emailIndex + 1], emailIndex + 1); }}
+        >
+          <p style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, letterSpacing: "0.15em", textTransform: "uppercase", color: "#D8C3B4", marginBottom: 8 }}>
             Upcoming Message
           </p>
-          <div className="flex items-center gap-3 justify-end" style={{ color: "rgba(229,226,225,0.4)" }}>
-            <span style={{ fontFamily: "'Newsreader', serif", fontStyle: "italic", fontSize: 18 }}>Next Message</span>
+          <div className="flex items-center gap-3 justify-end" style={{ color: emailIndex < emails.length - 1 ? "rgba(229,226,225,0.4)" : "rgba(229,226,225,0.15)" }}>
+            <span style={{ fontFamily: "'Newsreader', serif", fontStyle: "italic", fontSize: 18 }}>
+              {emailIndex < emails.length - 1 ? (emails[emailIndex + 1].from[0] || emails[emailIndex + 1].subject) : "—"}
+            </span>
             <span className="material-symbols-outlined" style={{ fontSize: 18 }}>arrow_forward</span>
           </div>
         </div>
@@ -322,6 +337,7 @@ export default function InboxClient({
   query: string;
 }) {
   const [selectedEmail, setSelectedEmail] = useState<Email | null>(null);
+  const [selectedEmailIndex, setSelectedEmailIndex] = useState<number>(-1);
   const [body, setBody] = useState("");
   const [isReaderOpen, setIsReaderOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<(typeof TABS)[number]>("Focused");
@@ -399,8 +415,11 @@ export default function InboxClient({
     return nextBody;
   };
 
-  const openEmail = async (email: Email) => {
+  const openEmail = async (email: Email, index?: number) => {
     setSelectedEmail({ ...email, isNew: false });
+    setSelectedEmailIndex(
+      index ?? filteredEmails.findIndex((e) => getEmailKey(e) === getEmailKey(email)),
+    );
     setBody("");
     setIsReaderOpen(true);
     clearMessageNewStatus({ uid: email.uid, mailboxAddress: email.mailboxAddress });
@@ -542,6 +561,9 @@ export default function InboxClient({
           body={body}
           onClose={closeReader}
           onToggleRead={toggleRead}
+          emails={filteredEmails}
+          emailIndex={selectedEmailIndex}
+          onNavigate={openEmail}
         />
       )}
 
@@ -603,6 +625,7 @@ export default function InboxClient({
           </button>
           <button
             type="button"
+            onClick={() => router.push("/settings")}
             className="p-2 transition-colors"
             style={{ color: "#D8C3B4", borderRadius: "0.5rem" }}
             onMouseEnter={(e) => (e.currentTarget.style.color = "#FFB77B")}
@@ -773,7 +796,7 @@ export default function InboxClient({
 
               {/* Rows */}
               <ul style={{ borderTop: `1px solid rgba(82,68,57,0.05)` }}>
-                {filteredEmails.map((email) => {
+                {filteredEmails.map((email, index) => {
                   const isSelected = selectedEmail && getEmailKey(selectedEmail) === getEmailKey(email);
                   const isUnread = !email.isRead;
                   return (
@@ -785,7 +808,7 @@ export default function InboxClient({
                         borderBottom: "1px solid rgba(82,68,57,0.07)",
                         background: isSelected ? "rgba(255,183,123,0.04)" : "transparent",
                       }}
-                      onClick={() => openEmail(email)}
+                      onClick={() => openEmail(email, index)}
                       onMouseEnter={(e) => { if (!isSelected) e.currentTarget.style.background = "rgba(255,183,123,0.02)"; }}
                       onMouseLeave={(e) => { if (!isSelected) e.currentTarget.style.background = "transparent"; }}
                     >
