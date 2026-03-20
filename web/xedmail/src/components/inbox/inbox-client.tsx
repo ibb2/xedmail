@@ -675,10 +675,10 @@ export default function InboxClient({
     await fetchBody(email);
   };
 
-  const closeReader = () => {
+  const closeReader = React.useCallback(() => {
     setIsReaderOpen(false);
     setBody("");
-  };
+  }, []);
 
   const handleArchive = React.useCallback(async () => {
     const target = isReaderOpen ? selectedEmail : focusedEmail;

@@ -194,7 +194,8 @@ export function SmartSearchBar({
   useEffect(() => {
     if (!ghostText || !canvasCtx.current || !inputRef.current) return;
     const width = canvasCtx.current.measureText(value).width;
-    setGhostLeft(cfg.paddingLeft + width - inputRef.current.scrollLeft);
+    const next = cfg.paddingLeft + width - inputRef.current.scrollLeft;
+    setGhostLeft((prev) => (Math.abs(prev - next) < 0.5 ? prev : next));
   });
 
   const tokens = useMemo(
