@@ -6,6 +6,9 @@ import DOMPurify from "dompurify";
 import { useAuth, useUser } from "@clerk/nextjs";
 import { useJazzInboxState } from "@/providers/jazz-provider";
 import { useRouter } from "next/navigation";
+import hotkeys from "hotkeys-js";
+import { SmartSearchBar } from "@/components/ui/smart-search-bar";
+import { extractContacts } from "@/lib/contacts";
 
 interface Email {
   id: string;
@@ -344,6 +347,7 @@ export default function InboxClient({
   const [isReaderOpen, setIsReaderOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<(typeof TABS)[number]>("Focused");
   const [localQuery, setLocalQuery] = useState(query);
+  const contacts = useMemo(() => extractContacts(emails), [emails]);
   const { updateMessageReadStatus, clearMessageNewStatus, archiveMessage, snoozeMessage, senderRules, allowSender, blockSender, addRecentSearch } = useJazzInboxState();
   const { getToken } = useAuth();
   const { user } = useUser();
@@ -517,6 +521,8 @@ export default function InboxClient({
     setComposeReturnToInbox(!isReaderOpen);
     if (isReaderOpen) closeReader();
     setIsComposeOpen(true);
+    hotkeys("escape", "compose", () => setIsComposeOpen(false));
+    hotkeys.setScope("compose");
   }, [selectedEmail, focusedEmail, isReaderOpen, body]);
 
   const handleSend = async () => {
@@ -541,6 +547,8 @@ export default function InboxClient({
         setComposeError(result.error);
       } else {
         setIsComposeOpen(false);
+        hotkeys.unbind("escape", "compose");
+        hotkeys.setScope("inbox");
       }
     } catch {
       setComposeError("Network error. Please try again.");
@@ -570,6 +578,8 @@ export default function InboxClient({
         setComposeError(result.error);
       } else {
         setIsComposeOpen(false);
+        hotkeys.unbind("escape", "compose");
+        hotkeys.setScope("inbox");
         setIsSendLaterOpen(false);
       }
     } catch {
@@ -579,59 +589,54 @@ export default function InboxClient({
     }
   };
 
-  // ── Keyboard shortcuts ──
+  // ── Keyboard shortcuts (hotkeys-js) ──
   React.useEffect(() => {
-    const handler = (e: KeyboardEvent) => {
-      // Skip when typing in inputs/textareas or compose is open
-      const tag = (e.target as HTMLElement).tagName;
-      if (tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || isComposeOpen) return;
+    hotkeys.setScope("inbox");
 
-      switch (e.key) {
-        case "j":
-        case "ArrowDown":
-          e.preventDefault();
-          setFocusedIndex((i) => Math.min(i + 1, filteredEmails.length - 1));
-          break;
-        case "k":
-        case "ArrowUp":
-          e.preventDefault();
-          setFocusedIndex((i) => Math.max(i - 1, 0));
-          break;
-        case "Enter":
-          e.preventDefault();
-          if (!isReaderOpen && focusedEmail) {
-            openEmail(focusedEmail, focusedIndex);
-          }
-          break;
-        case "Escape":
-          if (isSnoozeOpen) {
-            setIsSnoozeOpen(false);
-          } else if (isReaderOpen) {
-            closeReader();
-          }
-          break;
-        case "e":
-          e.preventDefault();
-          void handleArchive();
-          break;
-        case "s":
-          if (!e.ctrlKey && !e.metaKey) {
-            e.preventDefault();
-            if (activeEmail) setIsSnoozeOpen((o) => !o);
-          }
-          break;
-        case "r":
-          if (!e.ctrlKey && !e.metaKey) {
-            e.preventDefault();
-            openReply();
-          }
-          break;
+    hotkeys("j, down", "inbox", (e) => {
+      e.preventDefault();
+      setFocusedIndex((i) => Math.min(i + 1, filteredEmails.length - 1));
+    });
+    hotkeys("k, up", "inbox", (e) => {
+      e.preventDefault();
+      setFocusedIndex((i) => Math.max(i - 1, 0));
+    });
+    hotkeys("enter", "inbox", (e) => {
+      e.preventDefault();
+      if (!isReaderOpen && focusedEmail) openEmail(focusedEmail, focusedIndex);
+    });
+    hotkeys("escape", "inbox", () => {
+      if (isSnoozeOpen) setIsSnoozeOpen(false);
+      else if (isReaderOpen) closeReader();
+    });
+    hotkeys("e", "inbox", (e) => {
+      e.preventDefault();
+      void handleArchive();
+    });
+    hotkeys("s", "inbox", (e) => {
+      if (!e.ctrlKey && !e.metaKey) {
+        e.preventDefault();
+        if (activeEmail) setIsSnoozeOpen((o) => !o);
       }
-    };
+    });
+    hotkeys("r", "inbox", (e) => {
+      if (!e.ctrlKey && !e.metaKey) {
+        e.preventDefault();
+        openReply();
+      }
+    });
 
-    window.addEventListener("keydown", handler);
-    return () => window.removeEventListener("keydown", handler);
-  }, [filteredEmails.length, focusedEmail, focusedIndex, isReaderOpen, isComposeOpen, isSnoozeOpen, activeEmail, handleArchive, openReply]);
+    return () => {
+      hotkeys.unbind("j, down", "inbox");
+      hotkeys.unbind("k, up", "inbox");
+      hotkeys.unbind("enter", "inbox");
+      hotkeys.unbind("escape", "inbox");
+      hotkeys.unbind("e", "inbox");
+      hotkeys.unbind("s", "inbox");
+      hotkeys.unbind("r", "inbox");
+      hotkeys.setScope("all");
+    };
+  }, [filteredEmails.length, focusedEmail, focusedIndex, isReaderOpen, isSnoozeOpen, activeEmail, handleArchive, openReply, closeReader]);
 
   return (
     <div
@@ -671,34 +676,17 @@ export default function InboxClient({
         </div>
         <div className="flex items-center gap-4">
           {/* Search input */}
-          <div className="relative hidden lg:block">
-            <div className="absolute inset-y-0 left-3 flex items-center pointer-events-none">
-              <span className="material-symbols-outlined" style={{ color: "#D8C3B4", fontSize: 16 }}>search</span>
-            </div>
-            <input
-              type="text"
+          <div className="hidden lg:block">
+            <SmartSearchBar
+              size="sm"
               value={localQuery}
-              onChange={(e) => setLocalQuery(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  const val = (e.target as HTMLInputElement).value.trim();
-                  if (val) {
-                    addRecentSearch(val);
-                  }
-                  router.push(val ? `/inbox?query=${encodeURIComponent(val)}` : "/inbox");
-                }
+              onChange={setLocalQuery}
+              onSubmit={(val) => {
+                if (val) addRecentSearch(val);
+                router.push(val ? `/inbox?query=${encodeURIComponent(val)}` : "/inbox");
               }}
-              placeholder="Search commands..."
-              className="outline-none"
-              style={{
-                background: "#1C1B1B",
-                border: "1px solid rgba(82,68,57,0.3)",
-                borderRadius: "9999px",
-                padding: "4px 16px 4px 36px",
-                fontSize: 12,
-                width: 192,
-                color: "#E5E2E1",
-              }}
+              contacts={contacts}
+              placeholder="Search..."
             />
           </div>
             <div className="flex items-center gap-1" style={{ background: "#1C1B1B", borderRadius: "1rem", padding: "6px" }}>
@@ -1101,6 +1089,8 @@ export default function InboxClient({
               onClick={() => {
                 if (composeBody.trim() && !window.confirm("Discard this message?")) return;
                 setIsComposeOpen(false);
+                hotkeys.unbind("escape", "compose");
+                hotkeys.setScope("inbox");
               }}
               style={{ color: "#D8C3B4" }}
             >
