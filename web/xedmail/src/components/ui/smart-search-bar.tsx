@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect, useRef, useState, useMemo } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 
 export type Contact = { name: string; address: string };
 
@@ -10,7 +10,10 @@ type Token = { type: TokenType; text: string };
 const STATUS_WORDS = new Set(["unread", "read"]);
 const DATE_WORDS = new Set(["today", "yesterday"]);
 
-export function parseTokens(value: string, lockedAddresses: Set<string>): Token[] {
+export function parseTokens(
+  value: string,
+  lockedAddresses: Set<string>,
+): Token[] {
   if (!value) return [];
   const tokens: Token[] = [];
   const words = value.split(" ");
@@ -23,12 +26,15 @@ export function parseTokens(value: string, lockedAddresses: Set<string>): Token[
       const addressPart = word.slice(5); // text after "from:"
       if (addressPart) {
         // "from:alice@x.com" — all in one word
-        const type = lockedAddresses.has(addressPart) ? "from-locked" : "from-keyword";
+        const type = lockedAddresses.has(addressPart)
+          ? "from-locked"
+          : "from-keyword";
         tokens.push({ type, text: word });
       } else {
         // "from: alice" — keyword and address are separate words
         const next = words[i + 1] ?? "";
-        const type = next && lockedAddresses.has(next) ? "from-locked" : "from-keyword";
+        const type =
+          next && lockedAddresses.has(next) ? "from-locked" : "from-keyword";
         tokens.push({ type, text: next ? `from: ${next}` : "from:" });
         if (next) i++;
       }
@@ -36,7 +42,11 @@ export function parseTokens(value: string, lockedAddresses: Set<string>): Token[
       tokens.push({ type: "status", text: word });
     } else if (DATE_WORDS.has(wordLow)) {
       tokens.push({ type: "date", text: word });
-    } else if (wordLow === "last" && /^\d+$/.test(words[i + 1] ?? "") && words[i + 2]?.toLowerCase() === "days") {
+    } else if (
+      wordLow === "last" &&
+      /^\d+$/.test(words[i + 1] ?? "") &&
+      words[i + 2]?.toLowerCase() === "days"
+    ) {
       // Multi-word "last N days" — consume three words as one token
       const text = `${word} ${words[i + 1]} ${words[i + 2]}`;
       tokens.push({ type: "date", text });
@@ -50,18 +60,35 @@ export function parseTokens(value: string, lockedAddresses: Set<string>): Token[
 }
 
 // Colours per token type
-const TOKEN_STYLES: Record<TokenType, { color: string; background?: string }> = {
-  "from-locked":  { color: "#93c5fd", background: "rgba(96,165,250,0.1)" },
-  "from-keyword": { color: "#93c5fd" },
-  "status":       { color: "#fbbf24", background: "rgba(251,191,36,0.1)" },
-  "date":         { color: "#86efac", background: "rgba(134,239,172,0.1)" },
-  "keyword":      { color: "rgba(229,226,225,0.5)" },
-};
+const TOKEN_STYLES: Record<TokenType, { color: string; background?: string }> =
+  {
+    "from-locked": { color: "#93c5fd", background: "rgba(96,165,250,0.1)" },
+    "from-keyword": { color: "#93c5fd" },
+    status: { color: "#fbbf24", background: "rgba(251,191,36,0.1)" },
+    date: { color: "#86efac", background: "rgba(134,239,172,0.1)" },
+    keyword: { color: "rgba(229,226,225,0.5)" },
+  };
 
 // Size-specific layout constants
 const SIZE_CONFIG = {
-  lg: { paddingTop: 18, paddingRight: 24, paddingBottom: 18, paddingLeft: 44, fontSize: 16, iconLeft: 14, borderRadius: "1rem" },
-  sm: { paddingTop: 8,  paddingRight: 16, paddingBottom: 8,  paddingLeft: 36, fontSize: 14, iconLeft: 10, borderRadius: "9999px" },
+  lg: {
+    paddingTop: 18,
+    paddingRight: 24,
+    paddingBottom: 18,
+    paddingLeft: 44,
+    fontSize: 16,
+    iconLeft: 14,
+    borderRadius: "1rem",
+  },
+  sm: {
+    paddingTop: 8,
+    paddingRight: 16,
+    paddingBottom: 8,
+    paddingLeft: 36,
+    fontSize: 14,
+    iconLeft: 10,
+    borderRadius: "9999px",
+  },
 } as const;
 
 type SmartSearchBarProps = {
@@ -88,7 +115,9 @@ export function SmartSearchBar({
   const internalRef = useRef<HTMLInputElement>(null);
   const inputRef = externalRef ?? internalRef;
 
-  const [lockedAddresses, setLockedAddresses] = useState<Set<string>>(() => new Set());
+  const [lockedAddresses, setLockedAddresses] = useState<Set<string>>(
+    () => new Set(),
+  );
   const [ghostText, setGhostText] = useState("");
   const [ghostIndex, setGhostIndex] = useState(0);
   const [ghostLeft, setGhostLeft] = useState(0);
@@ -105,7 +134,11 @@ export function SmartSearchBar({
     const words = value.split(/\s+/);
     for (let i = 0; i < words.length; i++) {
       const w = words[i];
-      const addr = w.toLowerCase().startsWith("from:") ? w.slice(5) : (w === "from:" ? words[i + 1] : null);
+      const addr = w.toLowerCase().startsWith("from:")
+        ? w.slice(5)
+        : w === "from:"
+          ? words[i + 1]
+          : null;
       if (addr && addr.includes("@") && addr.split("@")[1]?.includes(".")) {
         initial.add(addr);
       }
@@ -119,20 +152,23 @@ export function SmartSearchBar({
       ctx.font = `${style.fontWeight} ${cfg.fontSize}px Inter, sans-serif`;
       canvasCtx.current = ctx;
     }
-  // eslint-disable-next-line react-hooks/exhaustive-deps
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // --- Derive ghost text from current value + contacts ---
   const { ghostSuggestions, typedPartial } = useMemo(() => {
     const tokens = parseTokens(value, lockedAddresses);
     const last = tokens[tokens.length - 1];
-    if (!last || last.type !== "from-keyword") return { ghostSuggestions: [], typedPartial: "" };
+    if (!last || last.type !== "from-keyword")
+      return { ghostSuggestions: [], typedPartial: "" };
     const partial = last.text.toLowerCase().startsWith("from:")
       ? last.text.slice(last.text.indexOf(":") + 1).trimStart()
       : "";
     if (!partial) return { ghostSuggestions: [], typedPartial: "" };
     const matches = contacts.filter(
-      (c) => c.address.toLowerCase().startsWith(partial) || c.name.toLowerCase().startsWith(partial),
+      (c) =>
+        c.address.toLowerCase().startsWith(partial) ||
+        c.name.toLowerCase().startsWith(partial),
     );
     return { ghostSuggestions: matches, typedPartial: partial };
   }, [value, lockedAddresses, contacts]);
@@ -147,7 +183,10 @@ export function SmartSearchBar({
       return;
     }
     const best = ghostSuggestions[ghostIndex];
-    if (!best) { setGhostText(""); return; }
+    if (!best) {
+      setGhostText("");
+      return;
+    }
     setGhostText(best.address.slice(typedPartial.length));
   }, [ghostSuggestions, ghostIndex, typedPartial]);
 
@@ -158,7 +197,10 @@ export function SmartSearchBar({
     setGhostLeft(cfg.paddingLeft + width - inputRef.current.scrollLeft);
   });
 
-  const tokens = useMemo(() => parseTokens(value, lockedAddresses), [value, lockedAddresses]);
+  const tokens = useMemo(
+    () => parseTokens(value, lockedAddresses),
+    [value, lockedAddresses],
+  );
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
     const ghostActive = ghostText.length > 0 && ghostSuggestions.length > 0;
@@ -183,7 +225,9 @@ export function SmartSearchBar({
       if (ghostActive) {
         e.preventDefault();
         e.nativeEvent.stopImmediatePropagation();
-        setGhostIndex((i) => (i - 1 + ghostSuggestions.length) % ghostSuggestions.length);
+        setGhostIndex(
+          (i) => (i - 1 + ghostSuggestions.length) % ghostSuggestions.length,
+        );
       }
       return;
     }
@@ -207,7 +251,10 @@ export function SmartSearchBar({
     }
 
     if (e.key === " " && typedPartial) {
-      if (typedPartial.includes("@") && typedPartial.split("@")[1]?.includes(".")) {
+      if (
+        typedPartial.includes("@") &&
+        typedPartial.split("@")[1]?.includes(".")
+      ) {
         setLockedAddresses((prev) => new Set([...prev, typedPartial]));
       }
     }

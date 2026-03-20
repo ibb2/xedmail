@@ -1,14 +1,14 @@
 // src/components/inbox/inbox-client.tsx
 "use client";
 
-import React, { useMemo, useState } from "react";
-import DOMPurify from "dompurify";
 import { useAuth, useUser } from "@clerk/nextjs";
-import { useJazzInboxState } from "@/providers/jazz-provider";
-import { useRouter } from "next/navigation";
+import DOMPurify from "dompurify";
 import hotkeys from "hotkeys-js";
+import { useRouter } from "next/navigation";
+import React, { useMemo, useState } from "react";
 import { SmartSearchBar } from "@/components/ui/smart-search-bar";
 import { extractContacts } from "@/lib/contacts";
+import { useJazzInboxState } from "@/providers/jazz-provider";
 
 interface Email {
   id: string;
@@ -41,7 +41,11 @@ function formatDate(dateStr: string) {
 function formatFullDate(dateStr: string) {
   const d = new Date(dateStr);
   return (
-    d.toLocaleDateString([], { day: "numeric", month: "long", year: "numeric" }) +
+    d.toLocaleDateString([], {
+      day: "numeric",
+      month: "long",
+      year: "numeric",
+    }) +
     " at " +
     d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
   );
@@ -77,7 +81,13 @@ function EmailReader({
   const clean = body ? DOMPurify.sanitize(body) : "";
   const emailDate = new Date(email.date);
   const dateStr =
-    emailDate.toLocaleDateString([], { month: "short", day: "numeric", year: "numeric" }).toUpperCase() +
+    emailDate
+      .toLocaleDateString([], {
+        month: "short",
+        day: "numeric",
+        year: "numeric",
+      })
+      .toUpperCase() +
     " · " +
     emailDate.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) +
     " PST";
@@ -93,16 +103,32 @@ function EmailReader({
       {/* Top nav */}
       <nav
         className="fixed top-0 left-0 w-full z-50 flex justify-between items-center px-6 py-3"
-        style={{ background: "rgba(19,19,19,0.8)", backdropFilter: "blur(20px)" }}
+        style={{
+          background: "rgba(19,19,19,0.8)",
+          backdropFilter: "blur(20px)",
+        }}
       >
         <div className="flex items-center gap-8">
           <span
-            style={{ fontFamily: "'Newsreader', serif", fontSize: 20, fontWeight: 500, letterSpacing: "-0.02em", color: "#E5E2E1" }}
+            style={{
+              fontFamily: "'Newsreader', serif",
+              fontSize: 20,
+              fontWeight: 500,
+              letterSpacing: "-0.02em",
+              color: "#E5E2E1",
+            }}
           >
             June
           </span>
         </div>
-       <div className="flex items-center gap-1" style={{ background: "#1C1B1B", borderRadius: "1rem", padding: "6px" }}>
+        <div
+          className="flex items-center gap-1"
+          style={{
+            background: "#1C1B1B",
+            borderRadius: "1rem",
+            padding: "6px",
+          }}
+        >
           <button
             type="button"
             className="p-2 transition-colors"
@@ -110,7 +136,12 @@ function EmailReader({
             onMouseEnter={(e) => (e.currentTarget.style.color = "#FFB77B")}
             onMouseLeave={(e) => (e.currentTarget.style.color = "#D8C3B4")}
           >
-            <span className="material-symbols-outlined" style={{ fontSize: 20 }}>palette</span>
+            <span
+              className="material-symbols-outlined"
+              style={{ fontSize: 20 }}
+            >
+              palette
+            </span>
           </button>
           <button
             type="button"
@@ -120,9 +151,21 @@ function EmailReader({
             onMouseEnter={(e) => (e.currentTarget.style.color = "#FFB77B")}
             onMouseLeave={(e) => (e.currentTarget.style.color = "#D8C3B4")}
           >
-            <span className="material-symbols-outlined" style={{ fontSize: 20 }}>settings</span>
+            <span
+              className="material-symbols-outlined"
+              style={{ fontSize: 20 }}
+            >
+              settings
+            </span>
           </button>
-          <div style={{ width: 1, height: 16, background: "rgba(82,68,57,0.5)", margin: "0 4px" }} />
+          <div
+            style={{
+              width: 1,
+              height: 16,
+              background: "rgba(82,68,57,0.5)",
+              margin: "0 4px",
+            }}
+          />
           <button
             type="button"
             className="flex items-center gap-2 transition-all"
@@ -131,16 +174,25 @@ function EmailReader({
             <div
               className="flex items-center justify-center overflow-hidden"
               style={{
-                width: 28, height: 28, borderRadius: "9999px",
+                width: 28,
+                height: 28,
+                borderRadius: "9999px",
                 background: "rgba(200,128,63,0.2)",
                 border: "1px solid rgba(255,183,123,0.2)",
-                fontSize: 11, fontWeight: 700, color: "#FFB77B",
+                fontSize: 11,
+                fontWeight: 700,
+                color: "#FFB77B",
                 fontFamily: "'Inter', sans-serif",
               }}
             >
               {(user?.firstName?.[0] ?? "U").toUpperCase()}
             </div>
-            <span className="material-symbols-outlined" style={{ fontSize: 14, color: "#D8C3B4" }}>expand_more</span>
+            <span
+              className="material-symbols-outlined"
+              style={{ fontSize: 14, color: "#D8C3B4" }}
+            >
+              expand_more
+            </span>
           </button>
         </div>
       </nav>
@@ -148,37 +200,121 @@ function EmailReader({
       {/* Message navigation */}
       <header
         className="flex justify-between items-end"
-        style={{ paddingTop: 96, paddingBottom: 32, paddingLeft: 24, paddingRight: 24, maxWidth: 1024, margin: "0 auto", width: "100%" }}
+        style={{
+          paddingTop: 96,
+          paddingBottom: 32,
+          paddingLeft: 24,
+          paddingRight: 24,
+          maxWidth: 1024,
+          margin: "0 auto",
+          width: "100%",
+        }}
       >
         {/* Previous */}
         <div
-          className={emailIndex > 0 ? "group cursor-pointer" : "opacity-30 cursor-default"}
-          onClick={() => { if (emailIndex > 0) onNavigate(emails[emailIndex - 1], emailIndex - 1); }}
+          className={
+            emailIndex > 0
+              ? "group cursor-pointer"
+              : "opacity-30 cursor-default"
+          }
+          onClick={() => {
+            if (emailIndex > 0)
+              onNavigate(emails[emailIndex - 1], emailIndex - 1);
+          }}
         >
-          <p style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, letterSpacing: "0.15em", textTransform: "uppercase", color: "#D8C3B4", marginBottom: 8 }}>
+          <p
+            style={{
+              fontFamily: "'JetBrains Mono', monospace",
+              fontSize: 10,
+              letterSpacing: "0.15em",
+              textTransform: "uppercase",
+              color: "#D8C3B4",
+              marginBottom: 8,
+            }}
+          >
             Previous Message
           </p>
-          <div className="flex items-center gap-3" style={{ color: emailIndex > 0 ? "rgba(229,226,225,0.4)" : "rgba(229,226,225,0.15)" }}>
-            <span className="material-symbols-outlined" style={{ fontSize: 18 }}>arrow_back</span>
-            <span style={{ fontFamily: "'Newsreader', serif", fontStyle: "italic", fontSize: 18 }}>
-              {emailIndex > 0 ? (emails[emailIndex - 1].from[0] || emails[emailIndex - 1].subject) : "—"}
+          <div
+            className="flex items-center gap-3"
+            style={{
+              color:
+                emailIndex > 0
+                  ? "rgba(229,226,225,0.4)"
+                  : "rgba(229,226,225,0.15)",
+            }}
+          >
+            <span
+              className="material-symbols-outlined"
+              style={{ fontSize: 18 }}
+            >
+              arrow_back
+            </span>
+            <span
+              style={{
+                fontFamily: "'Newsreader', serif",
+                fontStyle: "italic",
+                fontSize: 18,
+              }}
+            >
+              {emailIndex > 0
+                ? emails[emailIndex - 1].from[0] ||
+                  emails[emailIndex - 1].subject
+                : "—"}
             </span>
           </div>
         </div>
 
         {/* Next */}
         <div
-          className={emailIndex < emails.length - 1 ? "cursor-pointer text-right" : "opacity-30 cursor-default text-right"}
-          onClick={() => { if (emailIndex < emails.length - 1) onNavigate(emails[emailIndex + 1], emailIndex + 1); }}
+          className={
+            emailIndex < emails.length - 1
+              ? "cursor-pointer text-right"
+              : "opacity-30 cursor-default text-right"
+          }
+          onClick={() => {
+            if (emailIndex < emails.length - 1)
+              onNavigate(emails[emailIndex + 1], emailIndex + 1);
+          }}
         >
-          <p style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, letterSpacing: "0.15em", textTransform: "uppercase", color: "#D8C3B4", marginBottom: 8 }}>
+          <p
+            style={{
+              fontFamily: "'JetBrains Mono', monospace",
+              fontSize: 10,
+              letterSpacing: "0.15em",
+              textTransform: "uppercase",
+              color: "#D8C3B4",
+              marginBottom: 8,
+            }}
+          >
             Upcoming Message
           </p>
-          <div className="flex items-center gap-3 justify-end" style={{ color: emailIndex < emails.length - 1 ? "rgba(229,226,225,0.4)" : "rgba(229,226,225,0.15)" }}>
-            <span style={{ fontFamily: "'Newsreader', serif", fontStyle: "italic", fontSize: 18 }}>
-              {emailIndex < emails.length - 1 ? (emails[emailIndex + 1].from[0] || emails[emailIndex + 1].subject) : "—"}
+          <div
+            className="flex items-center gap-3 justify-end"
+            style={{
+              color:
+                emailIndex < emails.length - 1
+                  ? "rgba(229,226,225,0.4)"
+                  : "rgba(229,226,225,0.15)",
+            }}
+          >
+            <span
+              style={{
+                fontFamily: "'Newsreader', serif",
+                fontStyle: "italic",
+                fontSize: 18,
+              }}
+            >
+              {emailIndex < emails.length - 1
+                ? emails[emailIndex + 1].from[0] ||
+                  emails[emailIndex + 1].subject
+                : "—"}
             </span>
-            <span className="material-symbols-outlined" style={{ fontSize: 18 }}>arrow_forward</span>
+            <span
+              className="material-symbols-outlined"
+              style={{ fontSize: 18 }}
+            >
+              arrow_forward
+            </span>
           </div>
         </div>
       </header>
@@ -199,18 +335,40 @@ function EmailReader({
             <div className="flex gap-6 items-center">
               <span
                 className="flex items-center gap-2"
-                style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, color: "#FFB77B" }}
+                style={{
+                  fontFamily: "'JetBrains Mono', monospace",
+                  fontSize: 10,
+                  color: "#FFB77B",
+                }}
               >
-                <span className="material-symbols-outlined" style={{ fontSize: 12, fontVariationSettings: "'FILL' 1" }}>verified</span>
+                <span
+                  className="material-symbols-outlined"
+                  style={{ fontSize: 12, fontVariationSettings: "'FILL' 1" }}
+                >
+                  verified
+                </span>
                 ENCRYPTED.JUNE
               </span>
-              <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, color: "#D8C3B4" }}>
+              <span
+                style={{
+                  fontFamily: "'JetBrains Mono', monospace",
+                  fontSize: 10,
+                  color: "#D8C3B4",
+                }}
+              >
                 {dateStr}
               </span>
             </div>
             <div>
-              <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, color: "#D8C3B4" }}>
-                ID: {email.uid.slice(0, 3).toUpperCase()}-XO-{email.uid.slice(-2).toUpperCase()}
+              <span
+                style={{
+                  fontFamily: "'JetBrains Mono', monospace",
+                  fontSize: 10,
+                  color: "#D8C3B4",
+                }}
+              >
+                ID: {email.uid.slice(0, 3).toUpperCase()}-XO-
+                {email.uid.slice(-2).toUpperCase()}
               </span>
             </div>
           </div>
@@ -229,8 +387,13 @@ function EmailReader({
             {/* Asymmetric accent */}
             <div
               style={{
-                position: "absolute", top: 0, right: 0, width: 128, height: 128,
-                background: "linear-gradient(135deg, rgba(255,183,123,0.05) 0%, transparent 100%)",
+                position: "absolute",
+                top: 0,
+                right: 0,
+                width: 128,
+                height: 128,
+                background:
+                  "linear-gradient(135deg, rgba(255,183,123,0.05) 0%, transparent 100%)",
                 pointerEvents: "none",
               }}
             />
@@ -254,19 +417,27 @@ function EmailReader({
                 <div
                   className="flex items-center justify-center"
                   style={{
-                    width: 48, height: 48, borderRadius: "9999px",
+                    width: 48,
+                    height: 48,
+                    borderRadius: "9999px",
                     background: "#353535",
                     border: "1px solid rgba(82,68,57,0.3)",
-                    fontSize: 16, fontWeight: 700, color: "#FFB77B",
+                    fontSize: 16,
+                    fontWeight: 700,
+                    color: "#FFB77B",
                     fontFamily: "'Inter', sans-serif",
                   }}
                 >
                   {getInitials(email.from[0] || email.from[1] || "?")}
                 </div>
                 <div>
-                  <p style={{ fontSize: 14, fontWeight: 500, color: "#E5E2E1" }}>
+                  <p
+                    style={{ fontSize: 14, fontWeight: 500, color: "#E5E2E1" }}
+                  >
                     {email.from[0] || email.from[1]}{" "}
-                    <span style={{ color: "#D8C3B4", fontWeight: 400 }}>&lt;{email.from[1]}&gt;</span>
+                    <span style={{ color: "#D8C3B4", fontWeight: 400 }}>
+                      &lt;{email.from[1]}&gt;
+                    </span>
                   </p>
                   <p style={{ fontSize: 12, color: "#D8C3B4", marginTop: 2 }}>
                     to {email.to || "me"}
@@ -289,14 +460,22 @@ function EmailReader({
                 /** biome-ignore lint/security/noDangerouslySetInnerHtml: sanitized with DOMPurify */
                 <div
                   dangerouslySetInnerHTML={{ __html: clean }}
-                  style={{ maxWidth: "100%", overflowWrap: "break-word", wordBreak: "break-word" }}
+                  style={{
+                    maxWidth: "100%",
+                    overflowWrap: "break-word",
+                    wordBreak: "break-word",
+                  }}
                 />
               ) : (
-                <div className="flex justify-center" style={{ padding: "64px 0" }}>
+                <div
+                  className="flex justify-center"
+                  style={{ padding: "64px 0" }}
+                >
                   <div
                     className="animate-spin rounded-full"
                     style={{
-                      width: 20, height: 20,
+                      width: 20,
+                      height: 20,
                       border: "2px solid #353535",
                       borderTopColor: "#FFB77B",
                     }}
@@ -310,9 +489,18 @@ function EmailReader({
                   type="button"
                   onClick={() => onToggleRead(email)}
                   className="transition-opacity hover:opacity-70"
-                  style={{ color: "#D8C3B4", fontSize: 12, display: "flex", alignItems: "center", gap: 6 }}
+                  style={{
+                    color: "#D8C3B4",
+                    fontSize: 12,
+                    display: "flex",
+                    alignItems: "center",
+                    gap: 6,
+                  }}
                 >
-                  <span className="material-symbols-outlined" style={{ fontSize: 16 }}>
+                  <span
+                    className="material-symbols-outlined"
+                    style={{ fontSize: 16 }}
+                  >
                     {email.isRead ? "mark_email_unread" : "mark_email_read"}
                   </span>
                   {email.isRead ? "Mark as unread" : "Mark as read"}
@@ -348,7 +536,16 @@ export default function InboxClient({
   const [activeTab, setActiveTab] = useState<(typeof TABS)[number]>("Focused");
   const [localQuery, setLocalQuery] = useState(query);
   const contacts = useMemo(() => extractContacts(emails), [emails]);
-  const { updateMessageReadStatus, clearMessageNewStatus, archiveMessage, snoozeMessage, senderRules, allowSender, blockSender, addRecentSearch } = useJazzInboxState();
+  const {
+    updateMessageReadStatus,
+    clearMessageNewStatus,
+    archiveMessage,
+    snoozeMessage,
+    senderRules,
+    allowSender,
+    blockSender,
+    addRecentSearch,
+  } = useJazzInboxState();
   const { getToken } = useAuth();
   const { user } = useUser();
   const router = useRouter();
@@ -359,7 +556,10 @@ export default function InboxClient({
   );
 
   const blockedAddresses = React.useMemo(
-    () => new Set(senderRules.filter((r) => r.rule === "block").map((r) => r.address)),
+    () =>
+      new Set(
+        senderRules.filter((r) => r.rule === "block").map((r) => r.address),
+      ),
     [senderRules],
   );
 
@@ -383,7 +583,10 @@ export default function InboxClient({
       addressCount.set(addr, (addressCount.get(addr) ?? 0) + 1);
     }
     return sortedEmails
-      .filter((e) => addressCount.get(e.from[1]) === 1 && !ruledAddresses.has(e.from[1]))
+      .filter(
+        (e) =>
+          addressCount.get(e.from[1]) === 1 && !ruledAddresses.has(e.from[1]),
+      )
       .sort((a, b) => Date.parse(b.date) - Date.parse(a.date))
       .slice(0, 3);
   }, [sortedEmails, senderRules]);
@@ -397,7 +600,9 @@ export default function InboxClient({
 
   // Reset focused index when filtered list changes
   React.useEffect(() => {
-    setFocusedIndex((prev) => Math.min(prev, Math.max(0, filteredEmails.length - 1)));
+    setFocusedIndex((prev) =>
+      Math.min(prev, Math.max(0, filteredEmails.length - 1)),
+    );
   }, [filteredEmails.length]);
 
   // Scroll focused email into view
@@ -417,12 +622,26 @@ export default function InboxClient({
       `/api/mail/emails/mailbox/${encodeURIComponent(email.mailboxAddress)}/${email.uid}?isRead=${email.isRead}`,
       {
         method: "PATCH",
-        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
       },
     );
-    const updatedEmail = { ...email, isRead: !email.isRead, isNew: email.isRead ? email.isNew : false };
-    updateMessageReadStatus({ uid: email.uid, mailboxAddress: email.mailboxAddress }, updatedEmail.isRead);
-    if (!email.isRead) clearMessageNewStatus({ uid: email.uid, mailboxAddress: email.mailboxAddress });
+    const updatedEmail = {
+      ...email,
+      isRead: !email.isRead,
+      isNew: email.isRead ? email.isNew : false,
+    };
+    updateMessageReadStatus(
+      { uid: email.uid, mailboxAddress: email.mailboxAddress },
+      updatedEmail.isRead,
+    );
+    if (!email.isRead)
+      clearMessageNewStatus({
+        uid: email.uid,
+        mailboxAddress: email.mailboxAddress,
+      });
     if (selectedEmail && getEmailKey(selectedEmail) === getEmailKey(email)) {
       setSelectedEmail(updatedEmail);
     }
@@ -444,11 +663,15 @@ export default function InboxClient({
   const openEmail = async (email: Email, index?: number) => {
     setSelectedEmail({ ...email, isNew: false });
     setSelectedEmailIndex(
-      index ?? filteredEmails.findIndex((e) => getEmailKey(e) === getEmailKey(email)),
+      index ??
+        filteredEmails.findIndex((e) => getEmailKey(e) === getEmailKey(email)),
     );
     setBody("");
     setIsReaderOpen(true);
-    clearMessageNewStatus({ uid: email.uid, mailboxAddress: email.mailboxAddress });
+    clearMessageNewStatus({
+      uid: email.uid,
+      mailboxAddress: email.mailboxAddress,
+    });
     await fetchBody(email);
   };
 
@@ -466,10 +689,20 @@ export default function InboxClient({
       { method: "POST", headers: { Authorization: `Bearer ${token}` } },
     );
     if (response.ok) {
-      archiveMessage({ uid: target.uid, mailboxAddress: target.mailboxAddress });
+      archiveMessage({
+        uid: target.uid,
+        mailboxAddress: target.mailboxAddress,
+      });
       if (isReaderOpen) closeReader();
     }
-  }, [selectedEmail, focusedEmail, isReaderOpen, getToken, archiveMessage, closeReader]);
+  }, [
+    selectedEmail,
+    focusedEmail,
+    isReaderOpen,
+    getToken,
+    archiveMessage,
+    closeReader,
+  ]);
 
   const [isComposeOpen, setIsComposeOpen] = useState(false);
   const [composeMailbox, setComposeMailbox] = useState("");
@@ -486,8 +719,15 @@ export default function InboxClient({
 
   function getSnoozeDate(preset: "today" | "tomorrow" | "nextWeek"): Date {
     const d = new Date();
-    if (preset === "today") { d.setHours(d.getHours() + 3); return d; }
-    if (preset === "tomorrow") { d.setDate(d.getDate() + 1); d.setHours(9, 0, 0, 0); return d; }
+    if (preset === "today") {
+      d.setHours(d.getHours() + 3);
+      return d;
+    }
+    if (preset === "tomorrow") {
+      d.setDate(d.getDate() + 1);
+      d.setHours(9, 0, 0, 0);
+      return d;
+    }
     const day = d.getDay();
     const daysUntilMonday = day === 0 ? 1 : 8 - day;
     d.setDate(d.getDate() + daysUntilMonday);
@@ -533,16 +773,24 @@ export default function InboxClient({
       const token = await getToken();
       const res = await fetch("/api/mail/emails/send", {
         method: "POST",
-        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
         body: JSON.stringify({
           mailbox: composeMailbox,
-          to: composeTo, subject: composeSubject, body: composeBody,
-          inReplyTo: composeReplyTo, references: composeReplyTo,
+          to: composeTo,
+          subject: composeSubject,
+          body: composeBody,
+          inReplyTo: composeReplyTo,
+          references: composeReplyTo,
         }),
       });
       const result = await res.json();
       if (result.error === "INSUFFICIENT_SCOPE") {
-        setComposeError("Reconnect your mailbox in Settings to enable sending.");
+        setComposeError(
+          "Reconnect your mailbox in Settings to enable sending.",
+        );
       } else if (result.error) {
         setComposeError(result.error);
       } else {
@@ -565,11 +813,17 @@ export default function InboxClient({
       const token = await getToken();
       const res = await fetch("/api/mail/emails/schedule", {
         method: "POST",
-        headers: { Authorization: `Bearer ${token}`, "Content-Type": "application/json" },
+        headers: {
+          Authorization: `Bearer ${token}`,
+          "Content-Type": "application/json",
+        },
         body: JSON.stringify({
           mailbox: composeMailbox,
-          to: composeTo, subject: composeSubject, body: composeBody,
-          inReplyTo: composeReplyTo, references: composeReplyTo,
+          to: composeTo,
+          subject: composeSubject,
+          body: composeBody,
+          inReplyTo: composeReplyTo,
+          references: composeReplyTo,
           sendAt: sendAt.toISOString(),
         }),
       });
@@ -636,13 +890,27 @@ export default function InboxClient({
       hotkeys.unbind("r", "inbox");
       hotkeys.setScope("all");
     };
-  }, [filteredEmails.length, focusedEmail, focusedIndex, isReaderOpen, isSnoozeOpen, activeEmail, handleArchive, openReply, closeReader]);
+  }, [
+    filteredEmails.length,
+    focusedEmail,
+    focusedIndex,
+    isReaderOpen,
+    isSnoozeOpen,
+    activeEmail,
+    handleArchive,
+    openReply,
+    closeReader,
+  ]);
 
   return (
     <div
       className="flex h-screen flex-col overflow-hidden"
       tabIndex={-1}
-      style={{ background: "#131313", fontFamily: "'Inter', sans-serif", color: "#E5E2E1" }}
+      style={{
+        background: "#131313",
+        fontFamily: "'Inter', sans-serif",
+        color: "#E5E2E1",
+      }}
     >
       {/* Full-screen reader overlay */}
       {isReaderOpen && selectedEmail && (
@@ -669,7 +937,13 @@ export default function InboxClient({
         <div className="flex items-center gap-8">
           <a
             href="/"
-            style={{ fontFamily: "'Newsreader', serif", fontSize: 18, fontWeight: 500, letterSpacing: "-0.02em", color: "#E5E2E1" }}
+            style={{
+              fontFamily: "'Newsreader', serif",
+              fontSize: 18,
+              fontWeight: 500,
+              letterSpacing: "-0.02em",
+              color: "#E5E2E1",
+            }}
           >
             June
           </a>
@@ -683,60 +957,102 @@ export default function InboxClient({
               onChange={setLocalQuery}
               onSubmit={(val) => {
                 if (val) addRecentSearch(val);
-                router.push(val ? `/inbox?query=${encodeURIComponent(val)}` : "/inbox");
+                router.push(
+                  val ? `/inbox?query=${encodeURIComponent(val)}` : "/inbox",
+                );
               }}
               contacts={contacts}
               placeholder="Search..."
             />
           </div>
-            <div className="flex items-center gap-1" style={{ background: "#1C1B1B", borderRadius: "1rem", padding: "6px" }}>
-          <button
-            type="button"
-            className="p-2 transition-colors"
-            style={{ color: "#D8C3B4", borderRadius: "0.5rem" }}
-            onMouseEnter={(e) => (e.currentTarget.style.color = "#FFB77B")}
-            onMouseLeave={(e) => (e.currentTarget.style.color = "#D8C3B4")}
+          <div
+            className="flex items-center gap-1"
+            style={{
+              background: "#1C1B1B",
+              borderRadius: "1rem",
+              padding: "6px",
+            }}
           >
-            <span className="material-symbols-outlined" style={{ fontSize: 20 }}>palette</span>
-          </button>
-          <button
-            type="button"
-            onClick={() => router.push("/settings")}
-            className="p-2 transition-colors"
-            style={{ color: "#D8C3B4", borderRadius: "0.5rem" }}
-            onMouseEnter={(e) => (e.currentTarget.style.color = "#FFB77B")}
-            onMouseLeave={(e) => (e.currentTarget.style.color = "#D8C3B4")}
-          >
-            <span className="material-symbols-outlined" style={{ fontSize: 20 }}>settings</span>
-          </button>
-          <div style={{ width: 1, height: 16, background: "rgba(82,68,57,0.5)", margin: "0 4px" }} />
-          <button
-            type="button"
-            className="flex items-center gap-2 transition-all"
-            style={{ padding: "4px 8px 4px 4px", borderRadius: "0.75rem" }}
-          >
-            <div
-              className="flex items-center justify-center overflow-hidden"
-              style={{
-                width: 28, height: 28, borderRadius: "9999px",
-                background: "rgba(200,128,63,0.2)",
-                border: "1px solid rgba(255,183,123,0.2)",
-                fontSize: 11, fontWeight: 700, color: "#FFB77B",
-                fontFamily: "'Inter', sans-serif",
-              }}
+            <button
+              type="button"
+              className="p-2 transition-colors"
+              style={{ color: "#D8C3B4", borderRadius: "0.5rem" }}
+              onMouseEnter={(e) => (e.currentTarget.style.color = "#FFB77B")}
+              onMouseLeave={(e) => (e.currentTarget.style.color = "#D8C3B4")}
             >
-              {(user?.firstName?.[0] ?? "U").toUpperCase()}
-            </div>
-            <span className="material-symbols-outlined" style={{ fontSize: 14, color: "#D8C3B4" }}>expand_more</span>
-          </button>
-        </div>
+              <span
+                className="material-symbols-outlined"
+                style={{ fontSize: 20 }}
+              >
+                palette
+              </span>
+            </button>
+            <button
+              type="button"
+              onClick={() => router.push("/settings")}
+              className="p-2 transition-colors"
+              style={{ color: "#D8C3B4", borderRadius: "0.5rem" }}
+              onMouseEnter={(e) => (e.currentTarget.style.color = "#FFB77B")}
+              onMouseLeave={(e) => (e.currentTarget.style.color = "#D8C3B4")}
+            >
+              <span
+                className="material-symbols-outlined"
+                style={{ fontSize: 20 }}
+              >
+                settings
+              </span>
+            </button>
+            <div
+              style={{
+                width: 1,
+                height: 16,
+                background: "rgba(82,68,57,0.5)",
+                margin: "0 4px",
+              }}
+            />
+            <button
+              type="button"
+              className="flex items-center gap-2 transition-all"
+              style={{ padding: "4px 8px 4px 4px", borderRadius: "0.75rem" }}
+            >
+              <div
+                className="flex items-center justify-center overflow-hidden"
+                style={{
+                  width: 28,
+                  height: 28,
+                  borderRadius: "9999px",
+                  background: "rgba(200,128,63,0.2)",
+                  border: "1px solid rgba(255,183,123,0.2)",
+                  fontSize: 11,
+                  fontWeight: 700,
+                  color: "#FFB77B",
+                  fontFamily: "'Inter', sans-serif",
+                }}
+              >
+                {(user?.firstName?.[0] ?? "U").toUpperCase()}
+              </div>
+              <span
+                className="material-symbols-outlined"
+                style={{ fontSize: 14, color: "#D8C3B4" }}
+              >
+                expand_more
+              </span>
+            </button>
+          </div>
         </div>
       </header>
 
       {/* ── Scrollable body ── */}
-      <main className="flex-1 overflow-y-auto" style={{ paddingTop: 80, paddingBottom: 128, paddingLeft: 16, paddingRight: 16 }}>
+      <main
+        className="flex-1 overflow-y-auto"
+        style={{
+          paddingTop: 80,
+          paddingBottom: 128,
+          paddingLeft: 16,
+          paddingRight: 16,
+        }}
+      >
         <div className="mx-auto" style={{ maxWidth: 1024 }}>
-
           {/* Metadata ribbon */}
           <div
             className="flex items-center justify-between mb-8"
@@ -747,14 +1063,53 @@ export default function InboxClient({
             }}
           >
             <div className="flex items-center gap-4">
-              <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 9, letterSpacing: "0.15em", textTransform: "uppercase", color: "#D8C3B4" }}>Command Center</span>
-              <span style={{ width: 4, height: 4, borderRadius: "9999px", background: "rgba(82,68,57,0.5)", display: "inline-block" }} />
-              <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 9, letterSpacing: "0.15em", textTransform: "uppercase", color: "#FFB77B" }}>
+              <span
+                style={{
+                  fontFamily: "'JetBrains Mono', monospace",
+                  fontSize: 9,
+                  letterSpacing: "0.15em",
+                  textTransform: "uppercase",
+                  color: "#D8C3B4",
+                }}
+              >
+                Command Center
+              </span>
+              <span
+                style={{
+                  width: 4,
+                  height: 4,
+                  borderRadius: "9999px",
+                  background: "rgba(82,68,57,0.5)",
+                  display: "inline-block",
+                }}
+              />
+              <span
+                style={{
+                  fontFamily: "'JetBrains Mono', monospace",
+                  fontSize: 9,
+                  letterSpacing: "0.15em",
+                  textTransform: "uppercase",
+                  color: "#FFB77B",
+                }}
+              >
                 {unreadCount} Decisions Pending
               </span>
             </div>
-            <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 9, letterSpacing: "0.15em", textTransform: "uppercase", color: "rgba(216,195,180,0.5)" }}>
-              Last Synced: {new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })} GMT
+            <span
+              style={{
+                fontFamily: "'JetBrains Mono', monospace",
+                fontSize: 9,
+                letterSpacing: "0.15em",
+                textTransform: "uppercase",
+                color: "rgba(216,195,180,0.5)",
+              }}
+            >
+              Last Synced:{" "}
+              {new Date().toLocaleTimeString([], {
+                hour: "2-digit",
+                minute: "2-digit",
+              })}{" "}
+              GMT
             </span>
           </div>
 
@@ -762,9 +1117,25 @@ export default function InboxClient({
           {gatekeeperCandidates.length > 0 && (
             <section style={{ marginBottom: 48 }}>
               <div className="flex items-baseline gap-3 mb-6">
-                <h2 style={{ fontFamily: "'Newsreader', serif", fontSize: 30, color: "#E5E2E1" }}>The Gatekeeper</h2>
-                <span style={{ fontFamily: "'Newsreader', serif", fontStyle: "italic", fontSize: 18, color: "#D8C3B4" }}>
-                  Reviewing {gatekeeperCandidates.length} first-time sender{gatekeeperCandidates.length !== 1 ? "s" : ""}
+                <h2
+                  style={{
+                    fontFamily: "'Newsreader', serif",
+                    fontSize: 30,
+                    color: "#E5E2E1",
+                  }}
+                >
+                  The Gatekeeper
+                </h2>
+                <span
+                  style={{
+                    fontFamily: "'Newsreader', serif",
+                    fontStyle: "italic",
+                    fontSize: 18,
+                    color: "#D8C3B4",
+                  }}
+                >
+                  Reviewing {gatekeeperCandidates.length} first-time sender
+                  {gatekeeperCandidates.length !== 1 ? "s" : ""}
                 </span>
               </div>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
@@ -772,28 +1143,92 @@ export default function InboxClient({
                   <div
                     key={`${email.mailboxAddress}:${email.uid}`}
                     className="group flex flex-col gap-3 transition-all"
-                    style={{ background: "#1C1B1B", border: "1px solid rgba(82,68,57,0.15)", padding: 16, borderRadius: "0.75rem" }}
+                    style={{
+                      background: "#1C1B1B",
+                      border: "1px solid rgba(82,68,57,0.15)",
+                      padding: 16,
+                      borderRadius: "0.75rem",
+                    }}
                   >
                     <div className="flex items-center gap-3">
                       <div
                         className="flex items-center justify-center"
-                        style={{ width: 32, height: 32, borderRadius: "9999px", background: "rgba(82,68,57,0.3)", color: "rgba(255,183,123,0.8)", fontSize: 14, fontWeight: 700 }}
+                        style={{
+                          width: 32,
+                          height: 32,
+                          borderRadius: "9999px",
+                          background: "rgba(82,68,57,0.3)",
+                          color: "rgba(255,183,123,0.8)",
+                          fontSize: 14,
+                          fontWeight: 700,
+                        }}
                       >
-                        {(email.from[0]?.[0] ?? email.from[1]?.[0] ?? "?").toUpperCase()}
+                        {(
+                          email.from[0]?.[0] ??
+                          email.from[1]?.[0] ??
+                          "?"
+                        ).toUpperCase()}
                       </div>
                       <div className="flex flex-col">
-                        <h3 style={{ fontSize: 14, fontWeight: 500, color: "#E5E2E1" }}>{email.from[0] || email.from[1]}</h3>
-                        <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 8, color: "rgba(216,195,180,0.4)", letterSpacing: "0.1em", textTransform: "uppercase" }}>{email.from[1]}</span>
+                        <h3
+                          style={{
+                            fontSize: 14,
+                            fontWeight: 500,
+                            color: "#E5E2E1",
+                          }}
+                        >
+                          {email.from[0] || email.from[1]}
+                        </h3>
+                        <span
+                          style={{
+                            fontFamily: "'JetBrains Mono', monospace",
+                            fontSize: 8,
+                            color: "rgba(216,195,180,0.4)",
+                            letterSpacing: "0.1em",
+                            textTransform: "uppercase",
+                          }}
+                        >
+                          {email.from[1]}
+                        </span>
                       </div>
                     </div>
-                    <p style={{ fontSize: 12, color: "rgba(216,195,180,0.7)", lineHeight: 1.6, minHeight: "3rem" }}>{email.subject}</p>
+                    <p
+                      style={{
+                        fontSize: 12,
+                        color: "rgba(216,195,180,0.7)",
+                        lineHeight: 1.6,
+                        minHeight: "3rem",
+                      }}
+                    >
+                      {email.subject}
+                    </p>
                     <div className="flex gap-4 mt-1 opacity-0 group-hover:opacity-100 transition-opacity">
-                      <button type="button" onClick={() => allowSender(email.from[1])} className="hover:underline"
-                        style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase", color: "#FFB77B" }}>
+                      <button
+                        type="button"
+                        onClick={() => allowSender(email.from[1])}
+                        className="hover:underline"
+                        style={{
+                          fontFamily: "'JetBrains Mono', monospace",
+                          fontSize: 10,
+                          letterSpacing: "0.1em",
+                          textTransform: "uppercase",
+                          color: "#FFB77B",
+                        }}
+                      >
                         Allow
                       </button>
-                      <button type="button" onClick={() => blockSender(email.from[1])} className="hover:opacity-70"
-                        style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 10, letterSpacing: "0.1em", textTransform: "uppercase", color: "rgba(216,195,180,0.6)" }}>
+                      <button
+                        type="button"
+                        onClick={() => blockSender(email.from[1])}
+                        className="hover:opacity-70"
+                        style={{
+                          fontFamily: "'JetBrains Mono', monospace",
+                          fontSize: 10,
+                          letterSpacing: "0.1em",
+                          textTransform: "uppercase",
+                          color: "rgba(216,195,180,0.6)",
+                        }}
+                      >
                         Block
                       </button>
                     </div>
@@ -815,7 +1250,11 @@ export default function InboxClient({
             {/* Tabs row */}
             <div
               className="flex items-center justify-between"
-              style={{ padding: "12px 20px", borderBottom: "1px solid rgba(82,68,57,0.15)", background: "rgba(28,27,27,0.3)" }}
+              style={{
+                padding: "12px 20px",
+                borderBottom: "1px solid rgba(82,68,57,0.15)",
+                background: "rgba(28,27,27,0.3)",
+              }}
             >
               <div className="flex gap-6">
                 {TABS.map((tab) => (
@@ -829,20 +1268,45 @@ export default function InboxClient({
                       fontWeight: activeTab === tab ? 600 : 500,
                       textTransform: "uppercase",
                       letterSpacing: "0.06em",
-                      color: activeTab === tab ? "#FFB77B" : "rgba(216,195,180,0.5)",
+                      color:
+                        activeTab === tab ? "#FFB77B" : "rgba(216,195,180,0.5)",
                       transition: "color 0.15s",
                     }}
-                    onMouseEnter={(e) => { if (activeTab !== tab) e.currentTarget.style.color = "#E5E2E1"; }}
-                    onMouseLeave={(e) => { if (activeTab !== tab) e.currentTarget.style.color = "rgba(216,195,180,0.5)"; }}
+                    onMouseEnter={(e) => {
+                      if (activeTab !== tab)
+                        e.currentTarget.style.color = "#E5E2E1";
+                    }}
+                    onMouseLeave={(e) => {
+                      if (activeTab !== tab)
+                        e.currentTarget.style.color = "rgba(216,195,180,0.5)";
+                    }}
                   >
                     {tab}
                   </button>
                 ))}
               </div>
               <div className="flex items-center gap-3">
-                <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 9, color: "rgba(216,195,180,0.3)", letterSpacing: "0.1em", textTransform: "uppercase" }}>Sort: Recent</span>
-                <button type="button" style={{ color: "rgba(216,195,180,0.4)" }}>
-                  <span className="material-symbols-outlined" style={{ fontSize: 16 }}>filter_list</span>
+                <span
+                  style={{
+                    fontFamily: "'JetBrains Mono', monospace",
+                    fontSize: 9,
+                    color: "rgba(216,195,180,0.3)",
+                    letterSpacing: "0.1em",
+                    textTransform: "uppercase",
+                  }}
+                >
+                  Sort: Recent
+                </span>
+                <button
+                  type="button"
+                  style={{ color: "rgba(216,195,180,0.4)" }}
+                >
+                  <span
+                    className="material-symbols-outlined"
+                    style={{ fontSize: 16 }}
+                  >
+                    filter_list
+                  </span>
                 </button>
               </div>
             </div>
@@ -851,18 +1315,37 @@ export default function InboxClient({
             <div style={{ borderTop: "none" }}>
               {/* Empty / loading */}
               {!isLoading && filteredEmails.length === 0 && (
-                <div className="flex flex-col items-center justify-center" style={{ padding: "64px 0" }}>
-                  <span className="material-symbols-outlined" style={{ fontSize: 36, color: "#353535", marginBottom: 12 }}>mail</span>
+                <div
+                  className="flex flex-col items-center justify-center"
+                  style={{ padding: "64px 0" }}
+                >
+                  <span
+                    className="material-symbols-outlined"
+                    style={{ fontSize: 36, color: "#353535", marginBottom: 12 }}
+                  >
+                    mail
+                  </span>
                   <p style={{ fontSize: 14, color: "#D8C3B4" }}>
-                    {query ? `No emails matched "${query}".` : "Your inbox is empty."}
+                    {query
+                      ? `No emails matched "${query}".`
+                      : "Your inbox is empty."}
                   </p>
                 </div>
               )}
               {isLoading && filteredEmails.length === 0 && (
-                <div className="flex flex-col items-center justify-center" style={{ padding: "64px 0" }}>
+                <div
+                  className="flex flex-col items-center justify-center"
+                  style={{ padding: "64px 0" }}
+                >
                   <div
                     className="animate-spin rounded-full"
-                    style={{ width: 20, height: 20, border: "2px solid #353535", borderTopColor: "#FFB77B", marginBottom: 12 }}
+                    style={{
+                      width: 20,
+                      height: 20,
+                      border: "2px solid #353535",
+                      borderTopColor: "#FFB77B",
+                      marginBottom: 12,
+                    }}
                   />
                   <p style={{ fontSize: 12, color: "#D8C3B4" }}>
                     {query ? `Searching for "${query}"…` : "Loading emails…"}
@@ -871,9 +1354,14 @@ export default function InboxClient({
               )}
 
               {/* Rows */}
-              <ul ref={listRef} style={{ borderTop: `1px solid rgba(82,68,57,0.05)` }}>
+              <ul
+                ref={listRef}
+                style={{ borderTop: `1px solid rgba(82,68,57,0.05)` }}
+              >
                 {filteredEmails.map((email, index) => {
-                  const isSelected = selectedEmail && getEmailKey(selectedEmail) === getEmailKey(email);
+                  const isSelected =
+                    selectedEmail &&
+                    getEmailKey(selectedEmail) === getEmailKey(email);
                   const isFocused = index === focusedIndex && !isReaderOpen;
                   const isUnread = !email.isRead;
                   return (
@@ -888,21 +1376,39 @@ export default function InboxClient({
                           : isSelected
                             ? "rgba(255,183,123,0.04)"
                             : "transparent",
-                        outline: isFocused ? "1px solid rgba(255,183,123,0.15)" : "none",
+                        outline: isFocused
+                          ? "1px solid rgba(255,183,123,0.15)"
+                          : "none",
                         outlineOffset: "-1px",
                       }}
-                      onClick={() => { setFocusedIndex(index); openEmail(email, index); }}
-                      onMouseEnter={(e) => { if (!isSelected && !isFocused) e.currentTarget.style.background = "rgba(255,183,123,0.02)"; }}
-                      onMouseLeave={(e) => { if (!isSelected && !isFocused) e.currentTarget.style.background = "transparent"; }}
+                      onClick={() => {
+                        setFocusedIndex(index);
+                        openEmail(email, index);
+                      }}
+                      onMouseEnter={(e) => {
+                        if (!isSelected && !isFocused)
+                          e.currentTarget.style.background =
+                            "rgba(255,183,123,0.02)";
+                      }}
+                      onMouseLeave={(e) => {
+                        if (!isSelected && !isFocused)
+                          e.currentTarget.style.background = "transparent";
+                      }}
                     >
                       {/* Unread dot */}
                       <div className="flex-shrink-0 mr-4">
                         <div
                           style={{
-                            width: 6, height: 6, borderRadius: "9999px",
+                            width: 6,
+                            height: 6,
+                            borderRadius: "9999px",
                             background: isUnread ? "#FFB77B" : "transparent",
-                            boxShadow: isUnread ? "0 0 8px rgba(255,183,123,0.4)" : "none",
-                            border: isUnread ? "none" : "1px solid rgba(82,68,57,0.5)",
+                            boxShadow: isUnread
+                              ? "0 0 8px rgba(255,183,123,0.4)"
+                              : "none",
+                            border: isUnread
+                              ? "none"
+                              : "1px solid rgba(82,68,57,0.5)",
                           }}
                         />
                       </div>
@@ -921,17 +1427,38 @@ export default function InboxClient({
                       </div>
 
                       {/* Subject + snippet */}
-                      <div className="flex-1 truncate" style={{ fontSize: 12, paddingRight: 24 }}>
-                        <span style={{ color: isUnread ? "rgba(255,183,123,0.9)" : "rgba(229,226,225,0.8)", fontWeight: isUnread ? 500 : 400 }}>
+                      <div
+                        className="flex-1 truncate"
+                        style={{ fontSize: 12, paddingRight: 24 }}
+                      >
+                        <span
+                          style={{
+                            color: isUnread
+                              ? "rgba(255,183,123,0.9)"
+                              : "rgba(229,226,225,0.8)",
+                            fontWeight: isUnread ? 500 : 400,
+                          }}
+                        >
                           {email.subject}
                         </span>
-                        <span style={{ color: "rgba(229,226,225,0.4)" }}> — </span>
-                        <span style={{ color: "rgba(216,195,180,0.5)" }}>Click to read</span>
+                        <span style={{ color: "rgba(229,226,225,0.4)" }}>
+                          {" "}
+                          —{" "}
+                        </span>
+                        <span style={{ color: "rgba(216,195,180,0.5)" }}>
+                          Click to read
+                        </span>
                       </div>
 
                       {/* Timestamp */}
                       <div className="flex-shrink-0 flex items-center gap-3">
-                        <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 9, color: "rgba(216,195,180,0.4)" }}>
+                        <span
+                          style={{
+                            fontFamily: "'JetBrains Mono', monospace",
+                            fontSize: 9,
+                            color: "rgba(216,195,180,0.4)",
+                          }}
+                        >
                           {formatDate(email.date)}
                         </span>
                       </div>
@@ -944,13 +1471,44 @@ export default function InboxClient({
             {/* Footer status */}
             <div
               className="flex justify-between items-center"
-              style={{ padding: "8px 20px", background: "rgba(28,27,27,0.3)", borderTop: "1px solid rgba(82,68,57,0.1)" }}
+              style={{
+                padding: "8px 20px",
+                background: "rgba(28,27,27,0.3)",
+                borderTop: "1px solid rgba(82,68,57,0.1)",
+              }}
             >
               <div className="flex items-center gap-2">
-                <span style={{ width: 6, height: 6, borderRadius: "9999px", background: "rgba(52,211,153,0.5)", display: "inline-block" }} className="animate-pulse" />
-                <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 8, color: "rgba(216,195,180,0.6)", letterSpacing: "0.1em", textTransform: "uppercase" }}>System Operational</span>
+                <span
+                  style={{
+                    width: 6,
+                    height: 6,
+                    borderRadius: "9999px",
+                    background: "rgba(52,211,153,0.5)",
+                    display: "inline-block",
+                  }}
+                  className="animate-pulse"
+                />
+                <span
+                  style={{
+                    fontFamily: "'JetBrains Mono', monospace",
+                    fontSize: 8,
+                    color: "rgba(216,195,180,0.6)",
+                    letterSpacing: "0.1em",
+                    textTransform: "uppercase",
+                  }}
+                >
+                  System Operational
+                </span>
               </div>
-              <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 8, color: "rgba(216,195,180,0.3)", letterSpacing: "0.1em", textTransform: "uppercase" }}>
+              <span
+                style={{
+                  fontFamily: "'JetBrains Mono', monospace",
+                  fontSize: 8,
+                  color: "rgba(216,195,180,0.3)",
+                  letterSpacing: "0.1em",
+                  textTransform: "uppercase",
+                }}
+              >
                 {sortedEmails.length} Messages
               </span>
             </div>
@@ -958,13 +1516,18 @@ export default function InboxClient({
         </div>
       </main>
 
-            {/* Floating Navigation Bar */}
+      {/* Floating Navigation Bar */}
       <nav
         className="fixed flex justify-center items-center gap-1"
         style={{
-          bottom: 32, left: "50%", transform: "translateX(-50%)", zIndex: 50,
-          background: "rgba(28,27,27,0.9)", backdropFilter: "blur(16px)",
-          borderRadius: "1rem", padding: "8px 16px",
+          bottom: 32,
+          left: "50%",
+          transform: "translateX(-50%)",
+          zIndex: 50,
+          background: "rgba(28,27,27,0.9)",
+          backdropFilter: "blur(16px)",
+          borderRadius: "1rem",
+          padding: "8px 16px",
           boxShadow: "0 25px 50px -12px rgba(0,0,0,0.4)",
           border: "1px solid rgba(82,68,57,0.2)",
         }}
@@ -976,15 +1539,42 @@ export default function InboxClient({
           disabled={!activeEmail}
           className="flex flex-col items-center justify-center transition-all"
           style={{
-            padding: "8px 16px", borderRadius: "0.75rem",
-            color: activeEmail ? "rgba(229,226,225,0.7)" : "rgba(229,226,225,0.3)",
+            padding: "8px 16px",
+            borderRadius: "0.75rem",
+            color: activeEmail
+              ? "rgba(229,226,225,0.7)"
+              : "rgba(229,226,225,0.3)",
             cursor: activeEmail ? "pointer" : "not-allowed",
           }}
-          onMouseEnter={(e) => { if (activeEmail) { e.currentTarget.style.background = "#353535"; e.currentTarget.style.color = "#E5E2E1"; } }}
-          onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = activeEmail ? "rgba(229,226,225,0.7)" : "rgba(229,226,225,0.3)"; }}
+          onMouseEnter={(e) => {
+            if (activeEmail) {
+              e.currentTarget.style.background = "#353535";
+              e.currentTarget.style.color = "#E5E2E1";
+            }
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.background = "transparent";
+            e.currentTarget.style.color = activeEmail
+              ? "rgba(229,226,225,0.7)"
+              : "rgba(229,226,225,0.3)";
+          }}
         >
-          <span className="material-symbols-outlined" style={{ fontSize: 20, marginBottom: 4 }}>archive</span>
-          <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 9, letterSpacing: "0.05em", textTransform: "uppercase" }}>Archive <span style={{ opacity: 0.5 }}>E</span></span>
+          <span
+            className="material-symbols-outlined"
+            style={{ fontSize: 20, marginBottom: 4 }}
+          >
+            archive
+          </span>
+          <span
+            style={{
+              fontFamily: "'JetBrains Mono', monospace",
+              fontSize: 9,
+              letterSpacing: "0.05em",
+              textTransform: "uppercase",
+            }}
+          >
+            Archive <span style={{ opacity: 0.5 }}>E</span>
+          </span>
         </button>
 
         {/* Snooze */}
@@ -995,38 +1585,106 @@ export default function InboxClient({
             disabled={!activeEmail}
             className="flex flex-col items-center justify-center transition-all"
             style={{
-              padding: "8px 16px", borderRadius: "0.75rem",
-              color: activeEmail ? "rgba(229,226,225,0.7)" : "rgba(229,226,225,0.3)",
+              padding: "8px 16px",
+              borderRadius: "0.75rem",
+              color: activeEmail
+                ? "rgba(229,226,225,0.7)"
+                : "rgba(229,226,225,0.3)",
               cursor: activeEmail ? "pointer" : "not-allowed",
             }}
-            onMouseEnter={(e) => { if (activeEmail) { e.currentTarget.style.background = "#353535"; e.currentTarget.style.color = "#E5E2E1"; } }}
-            onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = activeEmail ? "rgba(229,226,225,0.7)" : "rgba(229,226,225,0.3)"; }}
+            onMouseEnter={(e) => {
+              if (activeEmail) {
+                e.currentTarget.style.background = "#353535";
+                e.currentTarget.style.color = "#E5E2E1";
+              }
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = "transparent";
+              e.currentTarget.style.color = activeEmail
+                ? "rgba(229,226,225,0.7)"
+                : "rgba(229,226,225,0.3)";
+            }}
           >
-            <span className="material-symbols-outlined" style={{ fontSize: 20, marginBottom: 4 }}>schedule</span>
-            <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 9, letterSpacing: "0.05em", textTransform: "uppercase" }}>Snooze <span style={{ opacity: 0.5 }}>S</span></span>
+            <span
+              className="material-symbols-outlined"
+              style={{ fontSize: 20, marginBottom: 4 }}
+            >
+              schedule
+            </span>
+            <span
+              style={{
+                fontFamily: "'JetBrains Mono', monospace",
+                fontSize: 9,
+                letterSpacing: "0.05em",
+                textTransform: "uppercase",
+              }}
+            >
+              Snooze <span style={{ opacity: 0.5 }}>S</span>
+            </span>
           </button>
 
           {isSnoozeOpen && (
             <div
               className="absolute bottom-full mb-2 left-1/2 -translate-x-1/2"
-              style={{ background: "#1C1B1B", border: "1px solid rgba(82,68,57,0.3)", borderRadius: "0.75rem", padding: 12, minWidth: 176, zIndex: 60 }}
+              style={{
+                background: "#1C1B1B",
+                border: "1px solid rgba(82,68,57,0.3)",
+                borderRadius: "0.75rem",
+                padding: 12,
+                minWidth: 176,
+                zIndex: 60,
+              }}
             >
-              {([
-                { label: "Later today", fn: () => handleSnooze(getSnoozeDate("today")) },
-                { label: "Tomorrow", fn: () => handleSnooze(getSnoozeDate("tomorrow")) },
-                { label: "Next week", fn: () => handleSnooze(getSnoozeDate("nextWeek")) },
-              ] as const).map(({ label, fn }) => (
+              {(
+                [
+                  {
+                    label: "Later today",
+                    fn: () => handleSnooze(getSnoozeDate("today")),
+                  },
+                  {
+                    label: "Tomorrow",
+                    fn: () => handleSnooze(getSnoozeDate("tomorrow")),
+                  },
+                  {
+                    label: "Next week",
+                    fn: () => handleSnooze(getSnoozeDate("nextWeek")),
+                  },
+                ] as const
+              ).map(({ label, fn }) => (
                 <button
-                  key={label} type="button" onClick={fn}
+                  key={label}
+                  type="button"
+                  onClick={fn}
                   className="block w-full text-left transition-opacity hover:opacity-70"
-                  style={{ padding: "6px 8px", fontSize: 12, color: "#E5E2E1", borderRadius: "0.5rem" }}
+                  style={{
+                    padding: "6px 8px",
+                    fontSize: 12,
+                    color: "#E5E2E1",
+                    borderRadius: "0.5rem",
+                  }}
                 >
                   {label}
                 </button>
               ))}
               {/* Custom date/time picker */}
-              <div style={{ borderTop: "1px solid rgba(82,68,57,0.2)", marginTop: 8, paddingTop: 8 }}>
-                <label style={{ fontSize: 10, color: "#D8C3B4", fontFamily: "'JetBrains Mono', monospace", textTransform: "uppercase", letterSpacing: "0.05em", display: "block", marginBottom: 4 }}>
+              <div
+                style={{
+                  borderTop: "1px solid rgba(82,68,57,0.2)",
+                  marginTop: 8,
+                  paddingTop: 8,
+                }}
+              >
+                <label
+                  style={{
+                    fontSize: 10,
+                    color: "#D8C3B4",
+                    fontFamily: "'JetBrains Mono', monospace",
+                    textTransform: "uppercase",
+                    letterSpacing: "0.05em",
+                    display: "block",
+                    marginBottom: 4,
+                  }}
+                >
                   Custom
                 </label>
                 <input
@@ -1035,7 +1693,16 @@ export default function InboxClient({
                   onChange={(e) => {
                     if (e.target.value) handleSnooze(new Date(e.target.value));
                   }}
-                  style={{ background: "#131313", border: "1px solid rgba(82,68,57,0.3)", borderRadius: "0.5rem", padding: "4px 8px", fontSize: 11, color: "#E5E2E1", width: "100%", outline: "none" }}
+                  style={{
+                    background: "#131313",
+                    border: "1px solid rgba(82,68,57,0.3)",
+                    borderRadius: "0.5rem",
+                    padding: "4px 8px",
+                    fontSize: 11,
+                    color: "#E5E2E1",
+                    width: "100%",
+                    outline: "none",
+                  }}
                 />
               </div>
             </div>
@@ -1049,15 +1716,42 @@ export default function InboxClient({
           disabled={!activeEmail}
           className="flex flex-col items-center justify-center transition-all"
           style={{
-            padding: "8px 16px", borderRadius: "0.75rem",
-            color: activeEmail ? "rgba(229,226,225,0.7)" : "rgba(229,226,225,0.3)",
+            padding: "8px 16px",
+            borderRadius: "0.75rem",
+            color: activeEmail
+              ? "rgba(229,226,225,0.7)"
+              : "rgba(229,226,225,0.3)",
             cursor: activeEmail ? "pointer" : "not-allowed",
           }}
-          onMouseEnter={(e) => { if (activeEmail) { e.currentTarget.style.background = "#353535"; e.currentTarget.style.color = "#E5E2E1"; } }}
-          onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = activeEmail ? "rgba(229,226,225,0.7)" : "rgba(229,226,225,0.3)"; }}
+          onMouseEnter={(e) => {
+            if (activeEmail) {
+              e.currentTarget.style.background = "#353535";
+              e.currentTarget.style.color = "#E5E2E1";
+            }
+          }}
+          onMouseLeave={(e) => {
+            e.currentTarget.style.background = "transparent";
+            e.currentTarget.style.color = activeEmail
+              ? "rgba(229,226,225,0.7)"
+              : "rgba(229,226,225,0.3)";
+          }}
         >
-          <span className="material-symbols-outlined" style={{ fontSize: 20, marginBottom: 4 }}>reply</span>
-          <span style={{ fontFamily: "'JetBrains Mono', monospace", fontSize: 9, letterSpacing: "0.05em", textTransform: "uppercase" }}>Reply <span style={{ opacity: 0.5 }}>R</span></span>
+          <span
+            className="material-symbols-outlined"
+            style={{ fontSize: 20, marginBottom: 4 }}
+          >
+            reply
+          </span>
+          <span
+            style={{
+              fontFamily: "'JetBrains Mono', monospace",
+              fontSize: 9,
+              letterSpacing: "0.05em",
+              textTransform: "uppercase",
+            }}
+          >
+            Reply <span style={{ opacity: 0.5 }}>R</span>
+          </span>
         </button>
       </nav>
 
@@ -1066,28 +1760,54 @@ export default function InboxClient({
         type="button"
         className="fixed flex items-center justify-center transition-all hover:scale-105 active:scale-95"
         style={{
-          bottom: 24, right: 24,
-          width: 56, height: 56, borderRadius: "1rem", zIndex: 40,
+          bottom: 24,
+          right: 24,
+          width: 56,
+          height: 56,
+          borderRadius: "1rem",
+          zIndex: 40,
           background: "linear-gradient(135deg, #FFB77B, #C8803F)",
           boxShadow: "0 10px 25px -5px rgba(255,183,123,0.15)",
           color: "#4D2700",
         }}
         title="Compose"
       >
-        <span className="material-symbols-outlined" style={{ fontSize: 22 }}>edit</span>
+        <span className="material-symbols-outlined" style={{ fontSize: 22 }}>
+          edit
+        </span>
       </button>
 
       {isComposeOpen && (
-        <div className="fixed inset-0 z-50 flex flex-col overflow-hidden" style={{ background: "#131313", fontFamily: "'Inter', sans-serif" }}>
+        <div
+          className="fixed inset-0 z-50 flex flex-col overflow-hidden"
+          style={{ background: "#131313", fontFamily: "'Inter', sans-serif" }}
+        >
           <nav
             className="fixed top-0 left-0 w-full flex justify-between items-center px-6 py-3"
-            style={{ background: "rgba(19,19,19,0.8)", backdropFilter: "blur(20px)", zIndex: 50 }}
+            style={{
+              background: "rgba(19,19,19,0.8)",
+              backdropFilter: "blur(20px)",
+              zIndex: 50,
+            }}
           >
-            <span style={{ fontFamily: "'Newsreader', serif", fontSize: 20, fontWeight: 500, color: "#E5E2E1" }}>New Message</span>
+            <span
+              style={{
+                fontFamily: "'Newsreader', serif",
+                fontSize: 20,
+                fontWeight: 500,
+                color: "#E5E2E1",
+              }}
+            >
+              New Message
+            </span>
             <button
               type="button"
               onClick={() => {
-                if (composeBody.trim() && !window.confirm("Discard this message?")) return;
+                if (
+                  composeBody.trim() &&
+                  !window.confirm("Discard this message?")
+                )
+                  return;
                 setIsComposeOpen(false);
                 hotkeys.unbind("escape", "compose");
                 hotkeys.setScope("inbox");
@@ -1098,56 +1818,181 @@ export default function InboxClient({
             </button>
           </nav>
 
-          <main style={{ maxWidth: 768, margin: "0 auto", width: "100%", padding: "96px 24px 24px" }}>
+          <main
+            style={{
+              maxWidth: 768,
+              margin: "0 auto",
+              width: "100%",
+              padding: "96px 24px 24px",
+            }}
+          >
             <div style={{ display: "flex", flexDirection: "column", gap: 16 }}>
               <input
-                type="email" placeholder="To" value={composeTo}
+                type="email"
+                placeholder="To"
+                value={composeTo}
                 onChange={(e) => setComposeTo(e.target.value)}
-                style={{ background: "#1C1B1B", border: "1px solid rgba(82,68,57,0.3)", borderRadius: "0.5rem", padding: "10px 14px", color: "#E5E2E1", fontSize: 14, outline: "none" }}
+                style={{
+                  background: "#1C1B1B",
+                  border: "1px solid rgba(82,68,57,0.3)",
+                  borderRadius: "0.5rem",
+                  padding: "10px 14px",
+                  color: "#E5E2E1",
+                  fontSize: 14,
+                  outline: "none",
+                }}
               />
               <input
-                type="text" placeholder="Subject" value={composeSubject}
+                type="text"
+                placeholder="Subject"
+                value={composeSubject}
                 onChange={(e) => setComposeSubject(e.target.value)}
-                style={{ background: "#1C1B1B", border: "1px solid rgba(82,68,57,0.3)", borderRadius: "0.5rem", padding: "10px 14px", color: "#E5E2E1", fontSize: 14, outline: "none" }}
+                style={{
+                  background: "#1C1B1B",
+                  border: "1px solid rgba(82,68,57,0.3)",
+                  borderRadius: "0.5rem",
+                  padding: "10px 14px",
+                  color: "#E5E2E1",
+                  fontSize: 14,
+                  outline: "none",
+                }}
               />
               <textarea
-                placeholder="Write your message…" value={composeBody} rows={14}
+                placeholder="Write your message…"
+                value={composeBody}
+                rows={14}
                 onChange={(e) => setComposeBody(e.target.value)}
-                style={{ background: "#1C1B1B", border: "1px solid rgba(82,68,57,0.3)", borderRadius: "0.5rem", padding: "10px 14px", color: "#E5E2E1", fontSize: 14, outline: "none", resize: "vertical" }}
+                style={{
+                  background: "#1C1B1B",
+                  border: "1px solid rgba(82,68,57,0.3)",
+                  borderRadius: "0.5rem",
+                  padding: "10px 14px",
+                  color: "#E5E2E1",
+                  fontSize: 14,
+                  outline: "none",
+                  resize: "vertical",
+                }}
               />
-              {composeError && <p style={{ fontSize: 12, color: "#FFB77B" }}>{composeError}</p>}
+              {composeError && (
+                <p style={{ fontSize: 12, color: "#FFB77B" }}>{composeError}</p>
+              )}
               <div className="flex gap-3 items-center">
                 <button
-                  type="button" onClick={handleSend} disabled={composeSending}
-                  style={{ background: "linear-gradient(135deg, #FFB77B, #C8803F)", color: "#4D2700", padding: "10px 24px", borderRadius: "0.75rem", fontWeight: 600, fontSize: 13, opacity: composeSending ? 0.6 : 1 }}
+                  type="button"
+                  onClick={handleSend}
+                  disabled={composeSending}
+                  style={{
+                    background: "linear-gradient(135deg, #FFB77B, #C8803F)",
+                    color: "#4D2700",
+                    padding: "10px 24px",
+                    borderRadius: "0.75rem",
+                    fontWeight: 600,
+                    fontSize: 13,
+                    opacity: composeSending ? 0.6 : 1,
+                  }}
                 >
                   {composeSending ? "Sending…" : "Send"}
                 </button>
                 <div className="relative">
                   <button
-                    type="button" disabled={composeSending}
+                    type="button"
+                    disabled={composeSending}
                     onClick={() => setIsSendLaterOpen((o) => !o)}
-                    style={{ background: "#1C1B1B", border: "1px solid rgba(82,68,57,0.3)", color: "#D8C3B4", padding: "10px 16px", borderRadius: "0.75rem", fontSize: 13 }}
+                    style={{
+                      background: "#1C1B1B",
+                      border: "1px solid rgba(82,68,57,0.3)",
+                      color: "#D8C3B4",
+                      padding: "10px 16px",
+                      borderRadius: "0.75rem",
+                      fontSize: 13,
+                    }}
                   >
                     Send Later
                   </button>
                   {isSendLaterOpen && (
-                    <div style={{ position: "absolute", bottom: "calc(100% + 8px)", left: 0, background: "#1C1B1B", border: "1px solid rgba(82,68,57,0.3)", borderRadius: "0.75rem", padding: 12, minWidth: 176, zIndex: 60 }}>
-                      {([
-                        { label: "Later today", fn: () => handleScheduleSend(getSnoozeDate("today")) },
-                        { label: "Tomorrow", fn: () => handleScheduleSend(getSnoozeDate("tomorrow")) },
-                        { label: "Next week", fn: () => handleScheduleSend(getSnoozeDate("nextWeek")) },
-                      ] as const).map(({ label, fn }) => (
-                        <button key={label} type="button" onClick={fn} className="block w-full text-left hover:opacity-70"
-                          style={{ padding: "6px 8px", fontSize: 12, color: "#E5E2E1", borderRadius: "0.5rem" }}>
+                    <div
+                      style={{
+                        position: "absolute",
+                        bottom: "calc(100% + 8px)",
+                        left: 0,
+                        background: "#1C1B1B",
+                        border: "1px solid rgba(82,68,57,0.3)",
+                        borderRadius: "0.75rem",
+                        padding: 12,
+                        minWidth: 176,
+                        zIndex: 60,
+                      }}
+                    >
+                      {(
+                        [
+                          {
+                            label: "Later today",
+                            fn: () =>
+                              handleScheduleSend(getSnoozeDate("today")),
+                          },
+                          {
+                            label: "Tomorrow",
+                            fn: () =>
+                              handleScheduleSend(getSnoozeDate("tomorrow")),
+                          },
+                          {
+                            label: "Next week",
+                            fn: () =>
+                              handleScheduleSend(getSnoozeDate("nextWeek")),
+                          },
+                        ] as const
+                      ).map(({ label, fn }) => (
+                        <button
+                          key={label}
+                          type="button"
+                          onClick={fn}
+                          className="block w-full text-left hover:opacity-70"
+                          style={{
+                            padding: "6px 8px",
+                            fontSize: 12,
+                            color: "#E5E2E1",
+                            borderRadius: "0.5rem",
+                          }}
+                        >
                           {label}
                         </button>
                       ))}
-                      <div style={{ borderTop: "1px solid rgba(82,68,57,0.2)", marginTop: 8, paddingTop: 8 }}>
-                        <label style={{ fontSize: 10, color: "#D8C3B4", fontFamily: "'JetBrains Mono', monospace", textTransform: "uppercase", display: "block", marginBottom: 4 }}>Custom</label>
-                        <input type="datetime-local" min={new Date().toISOString().slice(0, 16)}
-                          onChange={(e) => { if (e.target.value) handleScheduleSend(new Date(e.target.value)); }}
-                          style={{ background: "#131313", border: "1px solid rgba(82,68,57,0.3)", borderRadius: "0.5rem", padding: "4px 8px", fontSize: 11, color: "#E5E2E1", width: "100%", outline: "none" }}
+                      <div
+                        style={{
+                          borderTop: "1px solid rgba(82,68,57,0.2)",
+                          marginTop: 8,
+                          paddingTop: 8,
+                        }}
+                      >
+                        <label
+                          style={{
+                            fontSize: 10,
+                            color: "#D8C3B4",
+                            fontFamily: "'JetBrains Mono', monospace",
+                            textTransform: "uppercase",
+                            display: "block",
+                            marginBottom: 4,
+                          }}
+                        >
+                          Custom
+                        </label>
+                        <input
+                          type="datetime-local"
+                          min={new Date().toISOString().slice(0, 16)}
+                          onChange={(e) => {
+                            if (e.target.value)
+                              handleScheduleSend(new Date(e.target.value));
+                          }}
+                          style={{
+                            background: "#131313",
+                            border: "1px solid rgba(82,68,57,0.3)",
+                            borderRadius: "0.5rem",
+                            padding: "4px 8px",
+                            fontSize: 11,
+                            color: "#E5E2E1",
+                            width: "100%",
+                            outline: "none",
+                          }}
                         />
                       </div>
                     </div>
