@@ -975,7 +975,7 @@ export default function InboxClient({
           >
             <button
               type="button"
-              className="p-2 transition-colors"
+              className="flex items-center p-2 transition-colors"
               style={{ color: "#D8C3B4", borderRadius: "0.5rem" }}
               onMouseEnter={(e) => (e.currentTarget.style.color = "#FFB77B")}
               onMouseLeave={(e) => (e.currentTarget.style.color = "#D8C3B4")}
@@ -990,7 +990,7 @@ export default function InboxClient({
             <button
               type="button"
               onClick={() => router.push("/settings")}
-              className="p-2 transition-colors"
+              className="flex items-center p-2 transition-colors"
               style={{ color: "#D8C3B4", borderRadius: "0.5rem" }}
               onMouseEnter={(e) => (e.currentTarget.style.color = "#FFB77B")}
               onMouseLeave={(e) => (e.currentTarget.style.color = "#D8C3B4")}

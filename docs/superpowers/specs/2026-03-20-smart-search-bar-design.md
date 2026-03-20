@@ -33,7 +33,7 @@ type SmartSearchBarProps = {
 };
 
 // Size-specific constants (used by input, mirror div, and ghost span identically):
-// lg: paddingTop 24, paddingRight 32, paddingBottom 24, paddingLeft 56, fontSize 20, iconLeft 18
+// lg: paddingTop 18, paddingRight 24, paddingBottom 18, paddingLeft 44, fontSize 16, iconLeft 14
 // sm: paddingTop 8,  paddingRight 16, paddingBottom 8,  paddingLeft 36, fontSize 14, iconLeft 10
 ```
 

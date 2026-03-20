@@ -1,0 +1,114 @@
+<h2>SmartSearchBar — Design</h2>
+<p class="subtitle">One shared component, used on homepage and in inbox.</p>
+
+<div class="section">
+  <h3>What it looks like while typing</h3>
+  <div style="background: #0E0E0E; border-radius: 14px; padding: 32px;">
+
+    <p style="font-size: 11px; font-family: monospace; color: rgba(216,195,180,0.4); margin-bottom: 10px;">Typing: "from: sarah unread budget"</p>
+    <div style="background: #1C1B1B; border-radius: 14px; padding: 18px 20px 18px 52px; border: 1px solid rgba(255,183,123,0.3); position: relative; display: flex; align-items: center; gap: 8px;">
+      <span style="position: absolute; left: 18px; color: #FFB77B; font-size: 20px;">⌕</span>
+
+      <!-- from: and email share ONE background -->
+      <span style="color: #93c5fd; background: rgba(96,165,250,0.1); padding: 2px 8px; border-radius: 4px; font-size: 15px; font-family: 'Inter', sans-serif;">from: sarah@acme<span style="opacity: 0.35;">.co</span></span>
+
+      <!-- unread as single token -->
+      <span style="color: #fbbf24; background: rgba(251,191,36,0.1); padding: 2px 8px; border-radius: 4px; font-size: 15px; font-family: 'Inter', sans-serif;">unread</span>
+
+      <!-- plain keyword, no background -->
+      <span style="color: rgba(229,226,225,0.55); font-size: 15px; font-family: 'Inter', sans-serif;">budget</span>
+
+      <span style="display: inline-block; width: 2px; height: 18px; background: #FFB77B; border-radius: 1px; margin-left: 1px; animation: blink 1s step-end infinite;"></span>
+    </div>
+    <p style="font-size: 11px; font-family: monospace; color: rgba(216,195,180,0.35); margin-top: 10px;">↑ "from: sarah@acme.co" is one token · faded ".co" is ghost text · Tab to accept</p>
+
+    <style>@keyframes blink { 0%,100%{opacity:1} 50%{opacity:0} }</style>
+
+    <p style="font-size: 11px; font-family: monospace; color: rgba(216,195,180,0.4); margin: 20px 0 10px;">After Tab — full address accepted:</p>
+    <div style="background: #1C1B1B; border-radius: 14px; padding: 18px 20px 18px 52px; border: 1px solid rgba(82,68,57,0.3); position: relative; display: flex; align-items: center; gap: 8px;">
+      <span style="position: absolute; left: 18px; color: #FFB77B; font-size: 20px;">⌕</span>
+      <span style="color: #93c5fd; background: rgba(96,165,250,0.1); padding: 2px 8px; border-radius: 4px; font-size: 15px; font-family: 'Inter', sans-serif;">from: sarah@acme.co</span>
+      <span style="color: #fbbf24; background: rgba(251,191,36,0.1); padding: 2px 8px; border-radius: 4px; font-size: 15px; font-family: 'Inter', sans-serif;">unread</span>
+      <span style="color: rgba(229,226,225,0.55); font-size: 15px; font-family: 'Inter', sans-serif;">budget</span>
+      <span style="display: inline-block; width: 2px; height: 18px; background: #FFB77B; border-radius: 1px; margin-left: 1px; animation: blink 1s step-end infinite;"></span>
+    </div>
+
+    <div style="margin-top: 28px; display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px;">
+      <div style="background: #131313; border-radius: 8px; padding: 12px; text-align: center;">
+        <div style="background: rgba(96,165,250,0.1); border-radius: 4px; padding: 3px 8px; display: inline-block; margin-bottom: 6px;">
+          <span style="font-size: 12px; color: #93c5fd; font-family: 'Inter', sans-serif;">from: x</span>
+        </div>
+        <div style="font-size: 10px; color: rgba(216,195,180,0.5);">contact (one token)</div>
+      </div>
+      <div style="background: #131313; border-radius: 8px; padding: 12px; text-align: center;">
+        <div style="background: rgba(251,191,36,0.1); border-radius: 4px; padding: 3px 8px; display: inline-block; margin-bottom: 6px;">
+          <span style="font-size: 12px; color: #fbbf24; font-family: 'Inter', sans-serif;">unread</span>
+        </div>
+        <div style="font-size: 10px; color: rgba(216,195,180,0.5);">read / unread</div>
+      </div>
+      <div style="background: #131313; border-radius: 8px; padding: 12px; text-align: center;">
+        <div style="background: rgba(134,239,172,0.1); border-radius: 4px; padding: 3px 8px; display: inline-block; margin-bottom: 6px;">
+          <span style="font-size: 12px; color: #86efac; font-family: 'Inter', sans-serif;">today</span>
+        </div>
+        <div style="font-size: 10px; color: rgba(216,195,180,0.5);">today / date</div>
+      </div>
+      <div style="background: #131313; border-radius: 8px; padding: 12px; text-align: center;">
+        <div style="padding: 3px 8px; display: inline-block; margin-bottom: 6px;">
+          <span style="font-size: 12px; color: rgba(229,226,225,0.4); font-family: 'Inter', sans-serif;">keyword</span>
+        </div>
+        <div style="font-size: 10px; color: rgba(216,195,180,0.5);">plain keyword</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>How it works under the hood</h3>
+  <div style="background: #0E0E0E; border-radius: 14px; padding: 24px; display: flex; flex-direction: column; gap: 10px;">
+    <div style="background: #1C1B1B; border-radius: 10px; padding: 14px 16px; border-left: 3px solid #93c5fd;">
+      <div style="font-size: 11px; font-family: monospace; color: #93c5fd; margin-bottom: 4px;">LAYER 1 — Mirror div (behind, pointer-events: none)</div>
+      <div style="font-size: 12px; color: rgba(229,226,225,0.6);">Renders colored token spans. Each token (e.g. "from: sarah@acme.co") is a single span with one background. Same font, size, padding as the input above it.</div>
+    </div>
+    <div style="background: #1C1B1B; border-radius: 10px; padding: 14px 16px; border-left: 3px solid #FFB77B;">
+      <div style="font-size: 11px; font-family: monospace; color: #FFB77B; margin-bottom: 4px;">LAYER 2 — Real &lt;input&gt; (transparent text, on top)</div>
+      <div style="font-size: 12px; color: rgba(229,226,225,0.6);">Handles cursor, selection, mobile keyboard. Text color is transparent so mirror colors show through.</div>
+    </div>
+    <div style="background: #1C1B1B; border-radius: 10px; padding: 14px 16px; border-left: 3px solid #86efac;">
+      <div style="font-size: 11px; font-family: monospace; color: #86efac; margin-bottom: 4px;">LAYER 3 — Ghost span (faded, after typed text)</div>
+      <div style="font-size: 12px; color: rgba(229,226,225,0.6);">Shows the remaining contact address faded. Appears inside the same token background as the typed portion. Tab accepts, ↑↓ cycles.</div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>Keyboard shortcuts via hotkeys.js</h3>
+  <div style="background: #0E0E0E; border-radius: 14px; padding: 20px; display: grid; grid-template-columns: 1fr 1fr; gap: 16px;">
+    <div>
+      <div style="font-size: 10px; font-family: monospace; color: rgba(255,183,123,0.5); margin-bottom: 10px; letter-spacing: 0.1em;">GLOBAL</div>
+      <div style="display: flex; align-items: center; gap: 8px;">
+        <kbd style="background: #2a2a2a; color: #FFB77B; border: 1px solid rgba(82,68,57,0.5); padding: 3px 8px; border-radius: 5px; font-size: 11px; font-family: monospace;">⌘K / Ctrl+K</kbd>
+        <span style="font-size: 12px; color: rgba(229,226,225,0.6);">Focus search bar</span>
+      </div>
+    </div>
+    <div>
+      <div style="font-size: 10px; font-family: monospace; color: rgba(255,183,123,0.5); margin-bottom: 10px; letter-spacing: 0.1em;">INBOX (disabled while typing)</div>
+      <div style="display: flex; flex-direction: column; gap: 6px;">
+        <div style="display: flex; align-items: center; gap: 8px;"><kbd style="background: #2a2a2a; color: #FFB77B; border: 1px solid rgba(82,68,57,0.5); padding: 3px 8px; border-radius: 5px; font-size: 11px; font-family: monospace;">j / k</kbd><span style="font-size: 12px; color: rgba(229,226,225,0.6);">Navigate emails</span></div>
+        <div style="display: flex; align-items: center; gap: 8px;"><kbd style="background: #2a2a2a; color: #FFB77B; border: 1px solid rgba(82,68,57,0.5); padding: 3px 8px; border-radius: 5px; font-size: 11px; font-family: monospace;">e</kbd><span style="font-size: 12px; color: rgba(229,226,225,0.6);">Archive</span></div>
+        <div style="display: flex; align-items: center; gap: 8px;"><kbd style="background: #2a2a2a; color: #FFB77B; border: 1px solid rgba(82,68,57,0.5); padding: 3px 8px; border-radius: 5px; font-size: 11px; font-family: monospace;">s</kbd><span style="font-size: 12px; color: rgba(229,226,225,0.6);">Snooze</span></div>
+        <div style="display: flex; align-items: center; gap: 8px;"><kbd style="background: #2a2a2a; color: #FFB77B; border: 1px solid rgba(82,68,57,0.5); padding: 3px 8px; border-radius: 5px; font-size: 11px; font-family: monospace;">r</kbd><span style="font-size: 12px; color: rgba(229,226,225,0.6);">Reply</span></div>
+        <div style="display: flex; align-items: center; gap: 8px;"><kbd style="background: #2a2a2a; color: #FFB77B; border: 1px solid rgba(82,68,57,0.5); padding: 3px 8px; border-radius: 5px; font-size: 11px; font-family: monospace;">↵ / Esc</kbd><span style="font-size: 12px; color: rgba(229,226,225,0.6);">Open / close</span></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <h3>Files</h3>
+  <div style="background: #0E0E0E; border-radius: 10px; padding: 16px; font-family: monospace; font-size: 12px; line-height: 2;">
+    <div><span style="color: #86efac;">+</span> <span style="color: rgba(229,226,225,0.8);">src/components/ui/smart-search-bar.tsx</span> <span style="color: rgba(216,195,180,0.3);">— new shared component</span></div>
+    <div><span style="color: #fbbf24;">~</span> <span style="color: rgba(229,226,225,0.8);">src/app/page.tsx</span> <span style="color: rgba(216,195,180,0.3);">— swap in SmartSearchBar</span></div>
+    <div><span style="color: #fbbf24;">~</span> <span style="color: rgba(229,226,225,0.8);">src/components/inbox/inbox-client.tsx</span> <span style="color: rgba(216,195,180,0.3);">— swap search + migrate shortcuts</span></div>
+    <div><span style="color: #fbbf24;">~</span> <span style="color: rgba(229,226,225,0.8);">package.json</span> <span style="color: rgba(216,195,180,0.3);">— add hotkeys-js</span></div>
+  </div>
+</div>

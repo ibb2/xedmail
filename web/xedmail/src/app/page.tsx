@@ -402,7 +402,7 @@ export default function Home() {
                     <button
                       key={c.address}
                       type="button"
-                      className="flex items-center gap-3 transition-all"
+                      className="flex flex-1 items-center gap-3 transition-all"
                       style={{
                         padding: "8px 16px 8px 8px",
                         borderRadius: "1rem",
