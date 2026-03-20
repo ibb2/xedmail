@@ -10,6 +10,7 @@ const POLL_INTERVAL_MS = 30000;
 export default function Inbox() {
   const { getToken } = useAuth();
   const {
+    isLoaded: isJazzLoaded,
     messages,
     folders,
     mailboxes,
@@ -26,7 +27,9 @@ export default function Inbox() {
   const foldersRef = React.useRef(folders);
   const mailboxesRef = React.useRef(mailboxes);
   const [isLoading, setIsLoading] = React.useState(true);
-  const [serverMatchedKeys, setServerMatchedKeys] = React.useState<Set<string>>(new Set());
+  const [serverMatchedKeys, setServerMatchedKeys] = React.useState<
+    Set<string>
+  >(new Set());
 
   React.useEffect(() => {
     foldersRef.current = folders;
@@ -85,6 +88,14 @@ export default function Inbox() {
     localSearchResultsRef.current = localSearchResults;
   }, [localSearchResults]);
 
+  // Show cached Jazz messages immediately once Jazz has loaded,
+  // even before the first IMAP fetch completes.
+  React.useEffect(() => {
+    if (isJazzLoaded && messages.length > 0) {
+      setIsLoading(false);
+    }
+  }, [isJazzLoaded, messages.length]);
+
   const getAllEmails = React.useCallback(
     async (includeFolders: boolean) => {
       if (isFetchingRef.current) return;
@@ -93,14 +104,48 @@ export default function Inbox() {
       const abortController = new AbortController();
       abortControllerRef.current = abortController;
 
-      const isInitialLoad = messagesRef.current.length === 0;
-      if (isInitialLoad) setIsLoading(true);
+      const hasCachedMessages = messagesRef.current.length > 0;
+      if (!hasCachedMessages) setIsLoading(true);
 
       try {
         const token = await getToken();
 
-        if (isInitialLoad) {
-          // Initial full fetch
+        if (query) {
+          // Search mode: go straight to server search with the actual query.
+          // Skip the empty-query initial fetch — it's unnecessary for search
+          // and adds a slow extra IMAP round-trip.
+          const response = await fetch(
+            `/api/mail/search?query=${encodeURIComponent(query)}&includeFolders=${includeFolders}`,
+            {
+              headers: { Authorization: `Bearer ${token}` },
+              cache: "no-store",
+              signal: abortController.signal,
+            },
+          );
+          if (response.ok && requestIdRef.current === requestId) {
+            const payload = await response.json();
+            const serverEmails = payload.emails ?? [];
+            if (serverEmails.length > 0) {
+              syncInboxRef.current({
+                messages: serverEmails,
+                folders:
+                  payload.folders ??
+                  (includeFolders ? [] : foldersRef.current),
+                mailboxes: mailboxesRef.current,
+              });
+              setServerMatchedKeys(
+                new Set(
+                  serverEmails.map(
+                    (e: { mailboxAddress: string; uid: string }) =>
+                      `${e.mailboxAddress}:${e.uid}`,
+                  ),
+                ),
+              );
+            }
+            if (includeFolders) hasFetchedFoldersRef.current = true;
+          }
+        } else if (!hasCachedMessages) {
+          // No search query and no cached data — do initial full fetch
           const response = await fetch(
             `/api/mail/search?query=&includeFolders=${includeFolders}`,
             {
@@ -119,7 +164,7 @@ export default function Inbox() {
           });
           if (includeFolders) hasFetchedFoldersRef.current = true;
         } else {
-          // Incremental: only fetch UIDs above watermark per mailbox
+          // Has cached data and no search query — incremental fetch only
           const uniqueMailboxes = [
             ...new Set(messagesRef.current.map((m) => m.mailboxAddress)),
           ];
@@ -152,36 +197,6 @@ export default function Inbox() {
           }
         }
 
-        // Hybrid search: fall back to server if local results are sparse
-        if (
-          query &&
-          localSearchResultsRef.current.length < 5 &&
-          requestIdRef.current === requestId
-        ) {
-          const response = await fetch(
-            `/api/mail/search?query=${encodeURIComponent(query)}&includeFolders=false`,
-            {
-              headers: { Authorization: `Bearer ${token}` },
-              cache: "no-store",
-              signal: abortController.signal,
-            },
-          );
-          if (response.ok && requestIdRef.current === requestId) {
-            const payload = await response.json();
-            const serverEmails = payload.emails ?? [];
-            if (serverEmails.length > 0) {
-              syncInboxRef.current({
-                messages: serverEmails,
-                folders: [],
-                mailboxes: mailboxesRef.current,
-              });
-              setServerMatchedKeys(
-                new Set(serverEmails.map((e: { mailboxAddress: string; uid: string }) => `${e.mailboxAddress}:${e.uid}`)),
-              );
-            }
-          }
-        }
-
         // Resurface snoozed emails
         resurfaceSnoozedMessages();
 
@@ -209,6 +224,8 @@ export default function Inbox() {
   );
 
   React.useEffect(() => {
+    if (!isJazzLoaded) return;
+
     setServerMatchedKeys(new Set());
     abortControllerRef.current?.abort();
     isFetchingRef.current = false;
@@ -223,7 +240,7 @@ export default function Inbox() {
       abortControllerRef.current?.abort();
       isFetchingRef.current = false;
     };
-  }, [getAllEmails, query]);
+  }, [getAllEmails, query, isJazzLoaded]);
 
   return (
     <InboxClient

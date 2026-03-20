@@ -26,6 +26,7 @@ import {
 import type { EmailDto, FolderDto, MailboxDto } from "@/lib/mail-types";
 
 type JazzInboxContextValue = {
+  isLoaded: boolean;
   messages: EmailDto[];
   folders: FolderDto[];
   mailboxes: MailboxDto[];
@@ -187,6 +188,7 @@ function JazzInboxStateProvider({ children }: { children: React.ReactNode }) {
   const contextValue = useMemo<JazzInboxContextValue>(() => {
     if (!me.$isLoaded) {
       return {
+        isLoaded: false,
         messages: [],
         folders: [],
         mailboxes: [],
@@ -454,6 +456,7 @@ function JazzInboxStateProvider({ children }: { children: React.ReactNode }) {
     const state = ensureInboxState();
 
     return {
+      isLoaded: true,
       messages: mapMessages(state),
       folders: mapFolders(state),
       mailboxes: mapMailboxes(state),
