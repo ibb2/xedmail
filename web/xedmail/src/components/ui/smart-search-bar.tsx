@@ -278,7 +278,14 @@ export function SmartSearchBar({
   };
 
   return (
-    <div style={{ position: "relative", width: "100%" }}>
+    <div
+      style={{
+        position: "relative",
+        width: "100%",
+        background: "#1C1B1B",
+        borderRadius: cfg.borderRadius,
+      }}
+    >
       {/* Search icon */}
       <span
         className="material-symbols-outlined"
@@ -372,7 +379,7 @@ export function SmartSearchBar({
         style={{
           position: "relative",
           zIndex: 2,
-          background: "#1C1B1B",
+          background: "transparent",
           border: size === "sm" ? "1px solid rgba(82,68,57,0.3)" : "none",
           borderRadius: cfg.borderRadius,
           paddingTop: cfg.paddingTop,
