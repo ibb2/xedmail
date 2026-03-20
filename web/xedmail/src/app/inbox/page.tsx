@@ -26,6 +26,7 @@ export default function Inbox() {
   const foldersRef = React.useRef(folders);
   const mailboxesRef = React.useRef(mailboxes);
   const [isLoading, setIsLoading] = React.useState(true);
+  const [serverMatchedKeys, setServerMatchedKeys] = React.useState<Set<string>>(new Set());
 
   React.useEffect(() => {
     foldersRef.current = folders;
@@ -40,28 +41,44 @@ export default function Inbox() {
     messagesRef.current = messages;
   }, [messages]);
 
+  const syncInboxRef = React.useRef(syncInbox);
+  React.useEffect(() => {
+    syncInboxRef.current = syncInbox;
+  }, [syncInbox]);
+
+  const syncScheduledEmailsRef = React.useRef(syncScheduledEmails);
+  React.useEffect(() => {
+    syncScheduledEmailsRef.current = syncScheduledEmails;
+  }, [syncScheduledEmails]);
+
+  const snoozeMessageRef = React.useRef(snoozeMessage);
+  React.useEffect(() => {
+    snoozeMessageRef.current = snoozeMessage;
+  }, [snoozeMessage]);
+
   const resurfaceSnoozedMessages = React.useCallback(() => {
     const now = new Date();
     for (const msg of messagesRef.current) {
       if (msg.snoozedUntil && new Date(msg.snoozedUntil) <= now) {
-        snoozeMessage(
+        snoozeMessageRef.current(
           { uid: msg.uid, mailboxAddress: msg.mailboxAddress },
           undefined,
         );
       }
     }
-  }, [snoozeMessage]);
+  }, []);
 
   const localSearchResults = React.useMemo(() => {
     if (!query) return messages;
     const q = query.toLowerCase();
     return messages.filter(
       (m) =>
+        serverMatchedKeys.has(`${m.mailboxAddress}:${m.uid}`) ||
         m.subject.toLowerCase().includes(q) ||
         (m.from[0] ?? "").toLowerCase().includes(q) ||
         (m.from[1] ?? "").toLowerCase().includes(q),
     );
-  }, [messages, query]);
+  }, [messages, query, serverMatchedKeys]);
 
   const localSearchResultsRef = React.useRef(localSearchResults);
   React.useEffect(() => {
@@ -94,7 +111,7 @@ export default function Inbox() {
           );
           if (!response.ok || requestIdRef.current !== requestId) return;
           const payload = await response.json();
-          syncInbox({
+          syncInboxRef.current({
             messages: payload.emails ?? [],
             folders:
               payload.folders ?? (includeFolders ? [] : foldersRef.current),
@@ -126,7 +143,7 @@ export default function Inbox() {
             if (!response.ok || requestIdRef.current !== requestId) continue;
             const payload = await response.json();
             if ((payload.emails ?? []).length > 0) {
-              syncInbox({
+              syncInboxRef.current({
                 messages: payload.emails,
                 folders: [],
                 mailboxes: mailboxesRef.current,
@@ -151,12 +168,16 @@ export default function Inbox() {
           );
           if (response.ok && requestIdRef.current === requestId) {
             const payload = await response.json();
-            if ((payload.emails ?? []).length > 0) {
-              syncInbox({
-                messages: payload.emails,
+            const serverEmails = payload.emails ?? [];
+            if (serverEmails.length > 0) {
+              syncInboxRef.current({
+                messages: serverEmails,
                 folders: [],
                 mailboxes: mailboxesRef.current,
               });
+              setServerMatchedKeys(
+                new Set(serverEmails.map((e: { mailboxAddress: string; uid: string }) => `${e.mailboxAddress}:${e.uid}`)),
+              );
             }
           }
         }
@@ -172,7 +193,7 @@ export default function Inbox() {
           });
           if (scheduledResponse.ok && requestIdRef.current === requestId) {
             const { scheduled } = await scheduledResponse.json();
-            syncScheduledEmails(scheduled ?? []);
+            syncScheduledEmailsRef.current(scheduled ?? []);
           }
         }
       } catch (error) {
@@ -184,10 +205,11 @@ export default function Inbox() {
         }
       }
     },
-    [getToken, query, syncInbox, syncScheduledEmails, resurfaceSnoozedMessages],
+    [getToken, query, resurfaceSnoozedMessages],
   );
 
   React.useEffect(() => {
+    setServerMatchedKeys(new Set());
     abortControllerRef.current?.abort();
     isFetchingRef.current = false;
     void getAllEmails(!hasFetchedFoldersRef.current);
