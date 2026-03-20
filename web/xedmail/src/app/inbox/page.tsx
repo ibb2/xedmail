@@ -31,14 +31,17 @@ export default function Inbox() {
     mailboxesRef.current = mailboxes;
   }, [mailboxes]);
 
+  const messagesRef = React.useRef(messages);
+  React.useEffect(() => { messagesRef.current = messages; }, [messages]);
+
   const resurfaceSnoozedMessages = React.useCallback(() => {
     const now = new Date();
-    for (const msg of messages) {
+    for (const msg of messagesRef.current) {
       if (msg.snoozedUntil && new Date(msg.snoozedUntil) <= now) {
         snoozeMessage({ uid: msg.uid, mailboxAddress: msg.mailboxAddress }, undefined);
       }
     }
-  }, [messages, snoozeMessage]);
+  }, [snoozeMessage]);
 
   const localSearchResults = React.useMemo(() => {
     if (!query) return messages;
@@ -51,6 +54,9 @@ export default function Inbox() {
     );
   }, [messages, query]);
 
+  const localSearchResultsRef = React.useRef(localSearchResults);
+  React.useEffect(() => { localSearchResultsRef.current = localSearchResults; }, [localSearchResults]);
+
   const getAllEmails = React.useCallback(async (includeFolders: boolean) => {
     if (isFetchingRef.current) return;
     isFetchingRef.current = true;
@@ -58,7 +64,7 @@ export default function Inbox() {
     const abortController = new AbortController();
     abortControllerRef.current = abortController;
 
-    const isInitialLoad = messages.length === 0;
+    const isInitialLoad = messagesRef.current.length === 0;
     if (isInitialLoad) setIsLoading(true);
 
     try {
@@ -80,12 +86,12 @@ export default function Inbox() {
         if (includeFolders) hasFetchedFoldersRef.current = true;
       } else {
         // Incremental: only fetch UIDs above watermark per mailbox
-        const uniqueMailboxes = [...new Set(messages.map((m) => m.mailboxAddress))];
+        const uniqueMailboxes = [...new Set(messagesRef.current.map((m) => m.mailboxAddress))];
         for (const mailboxAddress of uniqueMailboxes) {
           if (requestIdRef.current !== requestId) break;
           const maxUid = Math.max(
             0,
-            ...messages
+            ...messagesRef.current
               .filter((m) => m.mailboxAddress === mailboxAddress)
               .map((m) => parseInt(m.uid, 10))
               .filter((n) => !Number.isNaN(n)),
@@ -103,7 +109,7 @@ export default function Inbox() {
       }
 
       // Hybrid search: fall back to server if local results are sparse
-      if (query && localSearchResults.length < 5 && requestIdRef.current === requestId) {
+      if (query && localSearchResultsRef.current.length < 5 && requestIdRef.current === requestId) {
         const response = await fetch(
           `/api/mail/search?query=${encodeURIComponent(query)}&includeFolders=false`,
           { headers: { Authorization: `Bearer ${token}` }, cache: "no-store", signal: abortController.signal },
@@ -138,7 +144,7 @@ export default function Inbox() {
         setIsLoading(false);
       }
     }
-  }, [getToken, query, messages, localSearchResults, syncInbox, syncScheduledEmails, resurfaceSnoozedMessages]);
+  }, [getToken, query, syncInbox, syncScheduledEmails, resurfaceSnoozedMessages]);
 
   React.useEffect(() => {
     abortControllerRef.current?.abort();

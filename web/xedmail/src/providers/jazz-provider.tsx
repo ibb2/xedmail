@@ -288,24 +288,29 @@ function JazzInboxStateProvider({ children }: { children: React.ReactNode }) {
 
       state.messages.$jazz.applyDiff([...merged.values()]);
 
-      // Folders and mailboxes: replace as before
-      state.folders.$jazz.applyDiff(
-        payload.folders.map((f) => ({
-          id: f.id,
-          name: f.name,
-          path: f.path,
-          unread: f.unread,
-          total: f.total,
-        })),
-      );
+      // Folders and mailboxes: only replace when the payload has data to avoid
+      // wiping them on incremental polls that always send empty arrays.
+      if (payload.folders.length > 0) {
+        state.folders.$jazz.applyDiff(
+          payload.folders.map((f) => ({
+            id: f.id,
+            name: f.name,
+            path: f.path,
+            unread: f.unread,
+            total: f.total,
+          })),
+        );
+      }
 
-      state.mailboxes.$jazz.applyDiff(
-        payload.mailboxes.map((m) => ({
-          id: m.id,
-          emailAddress: m.emailAddress,
-          image: m.image ?? undefined,
-        })),
-      );
+      if (payload.mailboxes.length > 0) {
+        state.mailboxes.$jazz.applyDiff(
+          payload.mailboxes.map((m) => ({
+            id: m.id,
+            emailAddress: m.emailAddress,
+            image: m.image ?? undefined,
+          })),
+        );
+      }
 
       state.$jazz.set("lastSyncedAt", new Date().toISOString());
     };
