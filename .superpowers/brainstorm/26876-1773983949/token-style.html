@@ -1,0 +1,75 @@
+<h2>How should search tokens look?</h2>
+<p class="subtitle">When you type "from:" or "unread", the token gets highlighted inline. Which style feels right for June's dark copper theme?</p>
+
+<div class="cards">
+  <div class="card" data-choice="chips" onclick="toggleSelect(this)">
+    <div class="card-image" style="padding: 32px 24px; background: #131313;">
+      <!-- Chip/pill style mockup -->
+      <div style="background: #1C1B1B; border-radius: 1rem; padding: 16px 20px; display: flex; align-items: center; gap: 8px; border: 1px solid rgba(82,68,57,0.3);">
+        <span style="color: #FFB77B; font-size: 16px;">&#x1F50D;</span>
+        <span style="background: rgba(96,165,250,0.15); color: #93c5fd; padding: 3px 10px; border-radius: 6px; font-size: 14px; font-family: 'Inter', sans-serif;">from:</span>
+        <span style="background: rgba(96,165,250,0.15); color: #93c5fd; padding: 3px 10px; border-radius: 6px; font-size: 14px; font-family: 'Inter', sans-serif;">sarah@acme.co</span>
+        <span style="background: rgba(251,191,36,0.15); color: #fbbf24; padding: 3px 10px; border-radius: 6px; font-size: 14px; font-family: 'Inter', sans-serif;">unread</span>
+        <span style="color: rgba(229,226,225,0.6); font-size: 14px; font-family: 'Inter', sans-serif;">project update</span>
+        <span style="color: rgba(229,226,225,0.3); font-size: 14px; margin-left: auto;">|</span>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>A. Discrete Chips</h3>
+      <p>Each recognized token becomes a rounded pill/chip. Clear boundaries, easy to delete individually. More structured feel.</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="inline-highlight" onclick="toggleSelect(this)">
+    <div class="card-image" style="padding: 32px 24px; background: #131313;">
+      <!-- Inline highlight style mockup (Fantastical-like) -->
+      <div style="background: #1C1B1B; border-radius: 1rem; padding: 16px 20px; display: flex; align-items: center; gap: 0; border: 1px solid rgba(82,68,57,0.3);">
+        <span style="color: #FFB77B; font-size: 16px; margin-right: 12px;">&#x1F50D;</span>
+        <span style="font-size: 14px; font-family: 'Inter', sans-serif; letter-spacing: 0.01em;">
+          <span style="color: #93c5fd;">from:</span>
+          <span style="color: #93c5fd;">sarah@acme.co</span>
+          <span style="color: rgba(229,226,225,0.3);"> </span>
+          <span style="color: #fbbf24;">unread</span>
+          <span style="color: rgba(229,226,225,0.3);"> </span>
+          <span style="color: rgba(229,226,225,0.6);">project update</span>
+        </span>
+        <span style="color: rgba(229,226,225,0.3); font-size: 14px; margin-left: auto;">|</span>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>B. Inline Color Highlighting</h3>
+      <p>Text stays as plain text but recognized keywords change color. Feels like Fantastical's natural language input. Lighter, faster to type.</p>
+    </div>
+  </div>
+
+  <div class="card" data-choice="hybrid" onclick="toggleSelect(this)">
+    <div class="card-image" style="padding: 32px 24px; background: #131313;">
+      <!-- Hybrid: colored text with subtle background -->
+      <div style="background: #1C1B1B; border-radius: 1rem; padding: 16px 20px; display: flex; align-items: center; gap: 0; border: 1px solid rgba(82,68,57,0.3);">
+        <span style="color: #FFB77B; font-size: 16px; margin-right: 12px;">&#x1F50D;</span>
+        <span style="font-size: 14px; font-family: 'Inter', sans-serif; letter-spacing: 0.01em;">
+          <span style="color: #93c5fd; background: rgba(96,165,250,0.08); padding: 2px 4px; border-radius: 3px;">from: sarah@acme.co</span>
+          <span style="color: rgba(229,226,225,0.3);"> </span>
+          <span style="color: #fbbf24; background: rgba(251,191,36,0.08); padding: 2px 4px; border-radius: 3px;">unread</span>
+          <span style="color: rgba(229,226,225,0.3);"> </span>
+          <span style="color: rgba(229,226,225,0.6);">project update</span>
+        </span>
+        <span style="color: rgba(229,226,225,0.3); font-size: 14px; margin-left: auto;">|</span>
+      </div>
+    </div>
+    <div class="card-body">
+      <h3>C. Hybrid (Recommended)</h3>
+      <p>Colored text with a very subtle background tint — best of both worlds. Color provides meaning, soft background groups the token visually without breaking typing flow. Closest to Fantastical.</p>
+    </div>
+  </div>
+</div>
+
+<div style="margin-top: 24px; padding: 16px; background: rgba(255,183,123,0.05); border-radius: 12px; border: 1px solid rgba(82,68,57,0.2);">
+  <p class="label">Proposed Color Mapping</p>
+  <div style="display: flex; gap: 24px; flex-wrap: wrap; margin-top: 8px;">
+    <span style="font-size: 13px;"><span style="color: #93c5fd;">&#9679;</span> <span style="color: rgba(229,226,225,0.7);">from: (contact)</span></span>
+    <span style="font-size: 13px;"><span style="color: #fbbf24;">&#9679;</span> <span style="color: rgba(229,226,225,0.7);">read / unread (status)</span></span>
+    <span style="font-size: 13px;"><span style="color: #86efac;">&#9679;</span> <span style="color: rgba(229,226,225,0.7);">today / yesterday / date (time)</span></span>
+    <span style="font-size: 13px;"><span style="color: rgba(229,226,225,0.5);">&#9679;</span> <span style="color: rgba(229,226,225,0.7);">plain keywords (default)</span></span>
+  </div>
+</div>

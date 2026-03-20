@@ -21,27 +21,44 @@ function hasStructuredFilters(search: SearchObject) {
   );
 }
 
+// Matches natural language queries that mean "show all mail"
+const ALL_INTENT_PATTERN = /\b(all|every|show|get|list|display)\b.*\b(email|mail|message|inbox)\b/i;
+
+// Words that are clearly filler — if removing them leaves nothing meaningful,
+// the user just wants all mail.
+const FILLER_WORDS = /\b(my|me|the|all|every|everything|show|get|list|display|find|search|for|emails?|mail|messages?|inbox|please)\b/gi;
+
+function isAllIntent(query: string): boolean {
+  if (!query) return true;
+  if (ALL_INTENT_PATTERN.test(query)) return true;
+  // Strip filler words; if nothing meaningful remains, it's an all-intent
+  const stripped = query.replace(FILLER_WORDS, "").trim();
+  return stripped.length === 0;
+}
+
 function buildFallbackSearchObject(query: string): SearchObject {
   const normalized = query.trim().toLowerCase();
 
-  if (!normalized) {
+  if (isAllIntent(normalized)) {
     return { all: true };
   }
 
   const search: SearchObject = { all: true };
 
-  if (normalized.includes(" unread") || normalized.startsWith("unread")) {
+  // Match "unread" anywhere, including "unread emails", "show unread", etc.
+  if (/\bunread\b/.test(normalized)) {
     search.seen = false;
-  } else if (normalized.includes(" read") || normalized.startsWith("read")) {
+  } else if (/\bread\b/.test(normalized) && !/\bread[yings]/.test(normalized)) {
+    // Match "read" but not "ready", "reading", "reader", "reads"
     search.seen = true;
   }
 
   const now = new Date();
   const today = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
 
-  if (normalized.includes("today")) {
+  if (/\btoday\b/.test(normalized)) {
     search.on = today;
-  } else if (normalized.includes("yesterday")) {
+  } else if (/\byesterday\b/.test(normalized)) {
     const yesterday = new Date(today);
     yesterday.setUTCDate(yesterday.getUTCDate() - 1);
     search.on = yesterday;
@@ -58,8 +75,14 @@ function buildFallbackSearchObject(query: string): SearchObject {
   }
 
   if (!hasStructuredFilters(search)) {
-    // Fall back to Gmail raw queries only when we do not have a structured filter set.
-    search.gmraw = query;
+    // Only use gmraw for short keyword-like queries (1-3 words) that look
+    // like intentional search terms, not natural language phrases.
+    const words = normalized.split(/\s+/);
+    if (words.length <= 3) {
+      search.gmraw = query;
+    }
+    // For longer phrases that didn't match any filter, return all results
+    // rather than searching for the literal phrase which rarely works.
   }
 
   return search;
@@ -84,7 +107,7 @@ function applyDateFilter(search: SearchObject, rawDate: string) {
 
 export async function buildSearchObject(query: string): Promise<SearchObject> {
   const trimmedQuery = query.trim();
-  if (!trimmedQuery) {
+  if (isAllIntent(trimmedQuery)) {
     return { all: true };
   }
 

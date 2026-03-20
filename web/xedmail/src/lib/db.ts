@@ -70,6 +70,21 @@ export async function ensureDatabaseSchema(): Promise<void> {
         created_at INTEGER NOT NULL
       );
       `,
+      `
+      CREATE TABLE IF NOT EXISTS scheduled_emails (
+        id TEXT PRIMARY KEY,
+        clerk_user_id TEXT NOT NULL,
+        mailbox_address TEXT NOT NULL,
+        to_address TEXT NOT NULL,
+        subject TEXT NOT NULL,
+        body TEXT NOT NULL,
+        in_reply_to TEXT,
+        "references" TEXT,
+        send_at INTEGER NOT NULL,
+        sent INTEGER NOT NULL DEFAULT 0,
+        sending INTEGER NOT NULL DEFAULT 0
+      );
+      `,
     ],
     "write",
   );

@@ -18,6 +18,7 @@ export const JazzMessage = co.map({
   id: z.string(),
   uid: z.string(),
   mailboxAddress: z.string(),
+  messageId: z.optional(z.string()),
   subject: z.string(),
   fromName: z.string(),
   fromAddress: z.string(),
@@ -26,6 +27,25 @@ export const JazzMessage = co.map({
   date: z.string(),
   isRead: z.boolean(),
   isNew: z.optional(z.boolean()),
+  snoozedUntil: z.optional(z.string()),
+  isArchived: z.optional(z.boolean()),
+});
+
+export const JazzSenderRule = co.map({
+  address: z.string(),
+  rule: z.enum(["allow", "block"]),
+});
+
+export const JazzScheduledEmail = co.map({
+  id: z.string(),
+  to: z.string(),
+  subject: z.string(),
+  sendAt: z.string(), // ISO date string
+});
+
+export const JazzRecentSearch = co.map({
+  query: z.string(),
+  searchedAt: z.string(), // ISO date string
 });
 
 export const JazzInboxState = co.map({
@@ -33,6 +53,9 @@ export const JazzInboxState = co.map({
   folders: co.list(JazzFolder),
   messages: co.list(JazzMessage),
   lastSyncedAt: z.optional(z.string()),
+  senderRules: co.list(JazzSenderRule),
+  scheduledEmails: co.list(JazzScheduledEmail),
+  recentSearches: co.list(JazzRecentSearch),
 });
 
 export const JazzMailRoot = co.map({
@@ -61,6 +84,9 @@ export const JazzMailAccount = co.account({
       mailboxes: { $each: true },
       folders: { $each: true },
       messages: { $each: true },
+      senderRules: { $each: true },
+      scheduledEmails: { $each: true },
+      recentSearches: { $each: true },
     },
   },
 });

@@ -1,6 +1,7 @@
 import type { Metadata } from "next";
 import "./globals.css";
 import { ClerkProvider } from "@clerk/nextjs";
+import { JazzInspector } from "jazz-tools/inspector";
 import { JazzProvider } from "@/providers/jazz-provider";
 
 export const metadata: Metadata = {
@@ -29,7 +30,9 @@ export default function RootLayout({
           />
         </head>
         <body className="antialiased">
-          <JazzProvider>{children}</JazzProvider>
+          <JazzProvider>      
+              {children}
+            </JazzProvider>
         </body>
       </html>
     </ClerkProvider>

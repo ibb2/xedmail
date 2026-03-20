@@ -67,6 +67,7 @@ function messageToEmailDto(
     id,
     uid: String(message.uid),
     mailboxAddress,
+    messageId: envelope?.messageId ?? undefined,
     subject,
     from,
     to,
@@ -275,6 +276,20 @@ export async function setReadStatus(
       } else {
         await client.messageFlagsRemove(uid, ["\\Seen"], { uid: true });
       }
+    } finally {
+      lock.release();
+    }
+  });
+}
+
+export async function archiveEmail(
+  auth: ImapAuth,
+  uid: string,
+): Promise<void> {
+  await withImapClient(auth, async (client) => {
+    const lock = await client.getMailboxLock(INBOX);
+    try {
+      await client.messageMove(uid, "[Gmail]/All Mail", { uid: true });
     } finally {
       lock.release();
     }
