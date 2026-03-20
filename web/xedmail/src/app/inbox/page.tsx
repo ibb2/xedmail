@@ -3,9 +3,11 @@ import { useAuth } from "@clerk/nextjs";
 import { useSearchParams } from "next/navigation";
 import React from "react";
 import InboxClient from "@/components/inbox/inbox-client";
+import { filterByIntent, parseQueryIntent } from "@/lib/client-query";
 import { useJazzInboxState } from "@/providers/jazz-provider";
 
 const POLL_INTERVAL_MS = 30000;
+const SPARSE_THRESHOLD = 5;
 
 export default function Inbox() {
   const { getToken } = useAuth();
@@ -71,25 +73,35 @@ export default function Inbox() {
     }
   }, []);
 
+  // Parse query intent once, used by both local filter and fetch logic
+  const intent = React.useMemo(() => parseQueryIntent(query), [query]);
+
+  // Filter Jazz-cached messages by parsed intent, plus include any
+  // server-matched keys from previous IMAP searches
   const localSearchResults = React.useMemo(() => {
     if (!query) return messages;
-    const q = query.toLowerCase();
-    return messages.filter(
-      (m) =>
-        serverMatchedKeys.has(`${m.mailboxAddress}:${m.uid}`) ||
-        m.subject.toLowerCase().includes(q) ||
-        (m.from[0] ?? "").toLowerCase().includes(q) ||
-        (m.from[1] ?? "").toLowerCase().includes(q),
-    );
-  }, [messages, query, serverMatchedKeys]);
+    const intentFiltered = filterByIntent(messages, intent);
+    // For keyword searches, also include server-matched results
+    if (intent.type === "keyword" && serverMatchedKeys.size > 0) {
+      const intentKeys = new Set(
+        intentFiltered.map((m) => `${m.mailboxAddress}:${m.uid}`),
+      );
+      const extra = messages.filter(
+        (m) =>
+          !intentKeys.has(`${m.mailboxAddress}:${m.uid}`) &&
+          serverMatchedKeys.has(`${m.mailboxAddress}:${m.uid}`),
+      );
+      return [...intentFiltered, ...extra];
+    }
+    return intentFiltered;
+  }, [messages, query, intent, serverMatchedKeys]);
 
   const localSearchResultsRef = React.useRef(localSearchResults);
   React.useEffect(() => {
     localSearchResultsRef.current = localSearchResults;
   }, [localSearchResults]);
 
-  // Show cached Jazz messages immediately once Jazz has loaded,
-  // even before the first IMAP fetch completes.
+  // Show cached Jazz messages immediately once Jazz has loaded
   React.useEffect(() => {
     if (isJazzLoaded && messages.length > 0) {
       setIsLoading(false);
@@ -110,42 +122,8 @@ export default function Inbox() {
       try {
         const token = await getToken();
 
-        if (query) {
-          // Search mode: go straight to server search with the actual query.
-          // Skip the empty-query initial fetch — it's unnecessary for search
-          // and adds a slow extra IMAP round-trip.
-          const response = await fetch(
-            `/api/mail/search?query=${encodeURIComponent(query)}&includeFolders=${includeFolders}`,
-            {
-              headers: { Authorization: `Bearer ${token}` },
-              cache: "no-store",
-              signal: abortController.signal,
-            },
-          );
-          if (response.ok && requestIdRef.current === requestId) {
-            const payload = await response.json();
-            const serverEmails = payload.emails ?? [];
-            if (serverEmails.length > 0) {
-              syncInboxRef.current({
-                messages: serverEmails,
-                folders:
-                  payload.folders ??
-                  (includeFolders ? [] : foldersRef.current),
-                mailboxes: mailboxesRef.current,
-              });
-              setServerMatchedKeys(
-                new Set(
-                  serverEmails.map(
-                    (e: { mailboxAddress: string; uid: string }) =>
-                      `${e.mailboxAddress}:${e.uid}`,
-                  ),
-                ),
-              );
-            }
-            if (includeFolders) hasFetchedFoldersRef.current = true;
-          }
-        } else if (!hasCachedMessages) {
-          // No search query and no cached data — do initial full fetch
+        if (!hasCachedMessages) {
+          // No cached data — initial full fetch from IMAP
           const response = await fetch(
             `/api/mail/search?query=&includeFolders=${includeFolders}`,
             {
@@ -164,7 +142,7 @@ export default function Inbox() {
           });
           if (includeFolders) hasFetchedFoldersRef.current = true;
         } else {
-          // Has cached data and no search query — incremental fetch only
+          // Has cached data — incremental UID watermark fetch
           const uniqueMailboxes = [
             ...new Set(messagesRef.current.map((m) => m.mailboxAddress)),
           ];
@@ -197,6 +175,42 @@ export default function Inbox() {
           }
         }
 
+        // For keyword searches: if Jazz cache has sparse results,
+        // fall back to IMAP server search
+        if (
+          intent.type === "keyword" &&
+          localSearchResultsRef.current.length < SPARSE_THRESHOLD &&
+          requestIdRef.current === requestId
+        ) {
+          const response = await fetch(
+            `/api/mail/search?query=${encodeURIComponent(query)}&includeFolders=false`,
+            {
+              headers: { Authorization: `Bearer ${token}` },
+              cache: "no-store",
+              signal: abortController.signal,
+            },
+          );
+          if (response.ok && requestIdRef.current === requestId) {
+            const payload = await response.json();
+            const serverEmails = payload.emails ?? [];
+            if (serverEmails.length > 0) {
+              syncInboxRef.current({
+                messages: serverEmails,
+                folders: [],
+                mailboxes: mailboxesRef.current,
+              });
+              setServerMatchedKeys(
+                new Set(
+                  serverEmails.map(
+                    (e: { mailboxAddress: string; uid: string }) =>
+                      `${e.mailboxAddress}:${e.uid}`,
+                  ),
+                ),
+              );
+            }
+          }
+        }
+
         // Resurface snoozed emails
         resurfaceSnoozedMessages();
 
@@ -220,7 +234,7 @@ export default function Inbox() {
         }
       }
     },
-    [getToken, query, resurfaceSnoozedMessages],
+    [getToken, query, intent, resurfaceSnoozedMessages],
   );
 
   React.useEffect(() => {
