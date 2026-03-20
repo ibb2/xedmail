@@ -278,12 +278,12 @@ export default function Home() {
                 type="button"
                 className="flex items-center gap-2 transition-all"
                 style={{
-                  padding: "10px 20px",
-                  borderRadius: "1rem",
+                  padding: "7px 14px",
+                  borderRadius: "0.75rem",
                   background: "#1C1B1B",
                   border: "1px solid rgba(82,68,57,0.3)",
                   color: "#D8C3B4",
-                  fontSize: 14,
+                  fontSize: 10,
                   fontWeight: 500,
                 }}
                 onClick={() =>
@@ -300,7 +300,7 @@ export default function Home() {
               >
                 <span
                   className="material-symbols-outlined"
-                  style={{ fontSize: 18 }}
+                  style={{ fontSize: 13 }}
                 >
                   {icon}
                 </span>

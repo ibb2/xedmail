@@ -72,13 +72,13 @@ const TOKEN_STYLES: Record<TokenType, { color: string; background?: string }> =
 // Size-specific layout constants
 const SIZE_CONFIG = {
   lg: {
-    paddingTop: 18,
-    paddingRight: 24,
-    paddingBottom: 18,
-    paddingLeft: 44,
-    fontSize: 16,
-    iconLeft: 14,
-    borderRadius: "1rem",
+    paddingTop: 12,
+    paddingRight: 17,
+    paddingBottom: 12,
+    paddingLeft: 34,
+    fontSize: 13,
+    iconLeft: 10,
+    borderRadius: "0.75rem",
   },
   sm: {
     paddingTop: 8,
@@ -295,7 +295,7 @@ export function SmartSearchBar({
           top: "50%",
           transform: "translateY(-50%)",
           color: "#FFB77B",
-          fontSize: size === "lg" ? 18 : 16,
+          fontSize: size === "lg" ? 14 : 16,
           pointerEvents: "none",
           zIndex: 4,
         }}
