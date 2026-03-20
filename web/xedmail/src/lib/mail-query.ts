@@ -21,10 +21,12 @@ function hasStructuredFilters(search: SearchObject) {
   );
 }
 
+const ALL_INTENT_PATTERNS = /^(all\s*(emails?|mail|messages?)?|everything|show\s*(me\s*)?all|inbox)$/i;
+
 function buildFallbackSearchObject(query: string): SearchObject {
   const normalized = query.trim().toLowerCase();
 
-  if (!normalized) {
+  if (!normalized || ALL_INTENT_PATTERNS.test(normalized)) {
     return { all: true };
   }
 
@@ -84,7 +86,7 @@ function applyDateFilter(search: SearchObject, rawDate: string) {
 
 export async function buildSearchObject(query: string): Promise<SearchObject> {
   const trimmedQuery = query.trim();
-  if (!trimmedQuery) {
+  if (!trimmedQuery || ALL_INTENT_PATTERNS.test(trimmedQuery)) {
     return { all: true };
   }
 
