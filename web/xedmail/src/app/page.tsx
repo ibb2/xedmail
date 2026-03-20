@@ -2,8 +2,11 @@
 
 import { useAuth, useUser } from "@clerk/nextjs";
 import { useRouter } from "next/navigation";
-import React, { useEffect, useState } from "react";
+import React, { useEffect, useMemo, useRef, useState } from "react";
 import { useJazzInboxState } from "@/providers/jazz-provider";
+import hotkeys from "hotkeys-js";
+import { SmartSearchBar } from "@/components/ui/smart-search-bar";
+import { extractContacts } from "@/lib/contacts";
 
 const QUICK_FILTERS = [
   { icon: "attach_file", label: "Has Attachment" },
@@ -21,6 +24,9 @@ const SUGGESTED_CONTACTS = [
 export default function Home() {
   const router = useRouter();
   const { mailboxes, messages, folders, syncInbox, recentSearches, addRecentSearch } = useJazzInboxState();
+  const contacts = useMemo(() => extractContacts(messages), [messages]);
+  const searchRef = useRef<HTMLInputElement>(null);
+  const [query, setQuery] = useState("");
   const [ran, setRan] = useState(false);
   const { getToken } = useAuth();
   const { user } = useUser();
@@ -59,6 +65,15 @@ export default function Home() {
       setRan(true);
     }
   }, [ran]);
+
+  useEffect(() => {
+    hotkeys("command+k, ctrl+k", (e) => {
+      e.preventDefault();
+      searchRef.current?.focus();
+      searchRef.current?.select();
+    });
+    return () => hotkeys.unbind("command+k, ctrl+k");
+  }, []);
 
   const formatTimeAgo = (iso: string) => {
     const diff = Date.now() - new Date(iso).getTime();
@@ -154,49 +169,19 @@ export default function Home() {
         {/* Search + Filters */}
         <div className="w-full" style={{ display: "flex", flexDirection: "column", gap: 20 }}>
           {/* Search bar */}
-          <div className="relative">
-            <div className="absolute inset-y-0 left-6 flex items-center pointer-events-none">
-              <span className="material-symbols-outlined" style={{ color: "#FFB77B", fontSize: 20 }}>search</span>
-            </div>
-            <input
-              type="text"
-              placeholder="Search your archive, contacts, or drafts..."
-              className="w-full outline-none"
-              style={{
-                background: "#1C1B1B",
-                border: "none",
-                borderRadius: "1rem",
-                padding: "24px 32px 24px 56px",
-                fontSize: 20,
-                color: "#E5E2E1",
-                fontFamily: "'Inter', sans-serif",
-              }}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") {
-                  const val = (e.target as HTMLInputElement).value.trim();
-                  if (val) {
-                    addRecentSearch(val);
-                  }
-                  router.push(val ? `/inbox?query=${encodeURIComponent(val)}` : "/inbox");
-                }
-              }}
-            />
-            <div className="absolute inset-y-0 right-6 flex items-center">
-              <kbd
-                style={{
-                  fontFamily: "'JetBrains Mono', monospace",
-                  fontSize: 10,
-                  padding: "4px 8px",
-                  borderRadius: "0.375rem",
-                  background: "#353535",
-                  color: "#D8C3B4",
-                  border: "1px solid rgba(82,68,57,0.5)",
-                }}
-              >
-                ⌘ K
-              </kbd>
-            </div>
-          </div>
+          <SmartSearchBar
+            size="lg"
+            value={query}
+            onChange={setQuery}
+            onSubmit={(val) => {
+              if (val) addRecentSearch(val);
+              router.push(val ? `/inbox?query=${encodeURIComponent(val)}` : "/inbox");
+            }}
+            contacts={contacts}
+            inputRef={searchRef}
+            showKbdHint
+            placeholder="Search your archive, contacts, or drafts..."
+          />
 
           {/* Quick filters */}
           <div className="flex flex-wrap gap-3 items-center justify-center">
