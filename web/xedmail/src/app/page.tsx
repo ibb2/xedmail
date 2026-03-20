@@ -15,29 +15,22 @@ const QUICK_FILTERS = [
   { icon: "person", label: "From Team" },
 ];
 
-const SUGGESTED_CONTACTS = [
-  {
-    initials: "MK",
-    label: "Marcus Kane",
-    role: "Creative Director",
-    bg: "#54463d",
-    color: "#c8b5a8",
-  },
-  {
-    initials: "SL",
-    label: "Sarah Liao",
-    role: "Product Manager",
-    bg: "#a28d7d",
-    color: "#35271b",
-  },
-  {
-    initials: "JD",
-    label: "Julian deVries",
-    role: "Legal Counsel",
-    bg: "#c8803f20",
-    color: "#ffb77b",
-  },
-];
+const CONTACT_PALETTES = [
+  { bg: "#54463d", color: "#c8b5a8" },
+  { bg: "#a28d7d", color: "#35271b" },
+  { bg: "rgba(200,128,63,0.12)", color: "#ffb77b" },
+  { bg: "#3d4a54", color: "#a8c0c8" },
+  { bg: "#4a3d54", color: "#c8a8d8" },
+] as const;
+
+function getInitials(name: string, address: string): string {
+  if (name) {
+    const parts = name.trim().split(/\s+/);
+    if (parts.length >= 2) return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+    if (parts[0]?.length >= 1) return parts[0][0].toUpperCase();
+  }
+  return address[0]?.toUpperCase() ?? "?";
+}
 
 export default function Home() {
   const router = useRouter();
@@ -128,7 +121,7 @@ export default function Home() {
           backdropFilter: "blur(20px)",
         }}
       >
-        <div className="flex items-center gap-8">
+        <div className="flex items-center justify-center gap-8">
           {/* <span
             className="text-xl font-medium tracking-tight"
             style={{ color: "#E5E2E1", fontFamily: "'Newsreader', serif" }}
@@ -147,7 +140,7 @@ export default function Home() {
         >
           <button
             type="button"
-            className="p-2 transition-colors"
+            className="flex items-center p-2 transition-colors"
             style={{ color: "#D8C3B4", borderRadius: "0.5rem" }}
             onMouseEnter={(e) => (e.currentTarget.style.color = "#FFB77B")}
             onMouseLeave={(e) => (e.currentTarget.style.color = "#D8C3B4")}
@@ -161,7 +154,7 @@ export default function Home() {
           </button>
           <button
             type="button"
-            className="p-2 transition-colors"
+            className="flex items-center p-2 transition-colors"
             style={{ color: "#D8C3B4", borderRadius: "0.5rem" }}
             onMouseEnter={(e) => (e.currentTarget.style.color = "#FFB77B")}
             onMouseLeave={(e) => (e.currentTarget.style.color = "#D8C3B4")}
@@ -398,10 +391,16 @@ export default function Home() {
                 Suggested Contacts
               </h3>
               <div className="flex flex-wrap gap-3">
-                {SUGGESTED_CONTACTS.map(
-                  ({ initials, label, role, bg, color }) => (
+                {contacts.length === 0 && (
+                  <p style={{ padding: "16px", color: "rgba(216,195,180,0.4)", fontSize: 14 }}>No contacts yet</p>
+                )}
+                {contacts.slice(0, 6).map((c, idx) => {
+                  const palette = CONTACT_PALETTES[idx % CONTACT_PALETTES.length];
+                  const initials = getInitials(c.name, c.address);
+                  const displayName = c.name || c.address.split("@")[0];
+                  return (
                     <button
-                      key={label}
+                      key={c.address}
                       type="button"
                       className="flex items-center gap-3 transition-all"
                       style={{
@@ -409,6 +408,11 @@ export default function Home() {
                         borderRadius: "1rem",
                         background: "#0E0E0E",
                         border: "1px solid rgba(82,68,57,0.3)",
+                      }}
+                      onClick={() => {
+                        const q = `from: ${c.address}`;
+                        addRecentSearch(q);
+                        router.push(`/inbox?query=${encodeURIComponent(q)}`);
                       }}
                       onMouseEnter={(e) =>
                         (e.currentTarget.style.background = "#1C1B1B")
@@ -423,8 +427,8 @@ export default function Home() {
                           width: 32,
                           height: 32,
                           borderRadius: "9999px",
-                          background: bg,
-                          color,
+                          background: palette.bg,
+                          color: palette.color,
                           fontSize: 11,
                           fontWeight: 700,
                         }}
@@ -439,7 +443,7 @@ export default function Home() {
                             color: "#E5E2E1",
                           }}
                         >
-                          {label}
+                          {displayName}
                         </p>
                         <p
                           style={{
@@ -447,12 +451,12 @@ export default function Home() {
                             color: "rgba(216,195,180,0.6)",
                           }}
                         >
-                          {role}
+                          {c.address}
                         </p>
                       </div>
                     </button>
-                  ),
-                )}
+                  );
+                })}
               </div>
             </div>
           </div>
