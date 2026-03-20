@@ -79,7 +79,7 @@ export async function ensureDatabaseSchema(): Promise<void> {
         subject TEXT NOT NULL,
         body TEXT NOT NULL,
         in_reply_to TEXT,
-        references TEXT,
+        "references" TEXT,
         send_at INTEGER NOT NULL,
         sent INTEGER NOT NULL DEFAULT 0,
         sending INTEGER NOT NULL DEFAULT 0

@@ -288,7 +288,7 @@ export async function insertScheduledEmail(opts: {
     sql: `
       INSERT INTO scheduled_emails
         (id, clerk_user_id, mailbox_address, to_address, subject, body,
-         in_reply_to, references, send_at, sent, sending)
+         in_reply_to, "references", send_at, sent, sending)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0)
     `,
     args: [
