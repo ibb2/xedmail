@@ -113,7 +113,7 @@ export const auth = betterAuth({
         await resend.emails.send({
           from: process.env.RESEND_FROM_EMAIL, // e.g. "noreply@yourdomain.com"
           to: email,
-          subject: "Sign in to June",
+          subject: "Sign in to xedmail", // update app name if needed
           html: `<a href="${url}">Click here to sign in</a>`,
         });
       },
@@ -128,14 +128,19 @@ export type Session = typeof auth.$Infer.Session;
 
 ## BetterAuth Client (`src/lib/auth-client.ts`)
 
+The `authClient` object must be exported as a named export (for `AuthProvider` in `jazz-provider.tsx`) **and** the individual hooks destructured for convenience. Include `jazzPluginClient()` in plugins.
+
 ```typescript
 import { createAuthClient } from "better-auth/react";
 import { magicLinkClient } from "better-auth/client/plugins";
+import { jazzPluginClient } from "jazz-tools/better-auth/auth/client";
 
-export const { useSession, signIn, signUp, signOut } = createAuthClient({
+export const authClient = createAuthClient({
   baseURL: process.env.NEXT_PUBLIC_BETTER_AUTH_URL ?? "",
-  plugins: [magicLinkClient()],
+  plugins: [magicLinkClient(), jazzPluginClient()],
 });
+
+export const { useSession, signIn, signUp, signOut } = authClient;
 ```
 
 ---
@@ -175,7 +180,7 @@ BetterAuth auto-creates its four tables (`user`, `session`, `account`, `verifica
 
 App tables are recreated in `src/lib/db.ts` with `user_id` replacing `clerk_user_id`.
 
-**`user_profiles` creation:** A row is upserted into `user_profiles` on every successful sign-in, using a BetterAuth `onSession` or `onSignIn` hook in `auth.ts`. This ensures the FK constraint in `mailboxes` is always satisfied before a mailbox is added. The `user_id` value is the BetterAuth `user.id`.
+**`user_profiles` creation:** A row is upserted into `user_profiles` on successful sign-in using BetterAuth's `hooks.after` on the `signIn` endpoint (fires once at sign-in, not on every session read). This ensures the FK constraint in `mailboxes` is always satisfied before a mailbox is added. The `user_id` value is the BetterAuth `user.id`.
 
 **`scheduled_emails`**: No FK to `user_profiles` — intentional. The scheduler is a background worker that may run after a user is deleted; a hard FK would block cleanup. `user_id` is still stored for filtering.
 
@@ -317,10 +322,10 @@ TURSO_AUTH_TOKEN
 ## Commit Plan
 
 ```
+feat: update Turso schema — clerk_user_id → user_id
 feat: add BetterAuth server instance + client + catch-all route
 feat: replace Clerk middleware with BetterAuth session middleware
 feat: add /login page (email+pw, Google, magic link)
-feat: update Turso schema — clerk_user_id → user_id
 feat: replace Clerk hooks in app components
 feat: wire Jazz provider to BetterAuth
 chore: remove Clerk dependency
