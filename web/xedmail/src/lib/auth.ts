@@ -1,22 +1,13 @@
 // web/xedmail/src/lib/auth.ts
 import { betterAuth } from "better-auth";
-import { createClient } from "@libsql/client";
+import { getDbClient } from "@/lib/db";
 import { LibsqlDialect } from "kysely-libsql";
 import { Kysely } from "kysely";
 import { magicLink } from "better-auth/plugins";
 
-const dbClient = createClient({
-  url: process.env.TURSO_DATABASE_URL!,
-  authToken: process.env.TURSO_AUTH_TOKEN,
-});
-
-const db = new Kysely({
-  dialect: new LibsqlDialect({ client: dbClient }),
-});
-
 export const auth = betterAuth({
   database: {
-    db,
+    db: new Kysely({ dialect: new LibsqlDialect({ client: getDbClient() }) }),
     type: "sqlite",
   },
   secret: process.env.BETTER_AUTH_SECRET!,
@@ -51,12 +42,16 @@ export const auth = betterAuth({
       create: {
         after: async (user) => {
           const now = Date.now();
-          await dbClient.execute({
-            sql: `INSERT INTO user_profiles (user_id, created_at, updated_at)
-                  VALUES (?, ?, ?)
-                  ON CONFLICT(user_id) DO UPDATE SET updated_at = excluded.updated_at`,
-            args: [user.id, now, now],
-          });
+          try {
+            await getDbClient().execute({
+              sql: `INSERT INTO user_profiles (user_id, created_at, updated_at)
+                    VALUES (?, ?, ?)
+                    ON CONFLICT(user_id) DO UPDATE SET updated_at = excluded.updated_at`,
+              args: [user.id, now, now],
+            });
+          } catch (err) {
+            console.error("[auth] Failed to upsert user_profiles for", user.id, err);
+          }
         },
       },
     },
