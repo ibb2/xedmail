@@ -72,6 +72,8 @@ Turso (libsql)
 | `src/app/page.tsx` | Replace `useAuth`, `useUser` with `useSession` |
 | `src/app/inbox/page.tsx` | Replace `useAuth` with `useSession` |
 | `src/components/app-sidebar.tsx` | Replace `currentUser()` with BetterAuth server session |
+| `src/app/home/page.tsx` | Renders `<AppSidebar />` — no Clerk imports directly, but must be verified post-migration that it builds clean |
+| `src/components/nav-user.tsx` | Wire the "Log out" menu item to BetterAuth `signOut()` — currently a no-op |
 | `src/providers/jazz-provider.tsx` | Replace `JazzClerkAuth` with Jazz BetterAuth plugin |
 | `src/components/inbox/inbox-client.tsx` | Replace `useAuth`/`useUser` with `useSession`; remove all `getToken()` calls (see note below) |
 | `package.json` | Add `better-auth`, `@better-auth/libsql`, `resend`; remove `@clerk/nextjs` |
@@ -101,15 +103,15 @@ export const auth = betterAuth({
   plugins: [
     magicLink({
       sendMagicLink: async ({ email, url }) => {
-        // Resend integration — stub logs to console if RESEND_API_KEY not set
-        if (!process.env.RESEND_API_KEY) {
+        // Resend integration — stub logs to console if env not fully configured
+        if (!process.env.RESEND_API_KEY || !process.env.RESEND_FROM_EMAIL) {
           console.log(`[magic-link] ${email}: ${url}`);
           return;
         }
         const { Resend } = await import("resend");
         const resend = new Resend(process.env.RESEND_API_KEY);
         await resend.emails.send({
-          from: process.env.RESEND_FROM_EMAIL!, // e.g. "noreply@yourdomain.com"
+          from: process.env.RESEND_FROM_EMAIL, // e.g. "noreply@yourdomain.com"
           to: email,
           subject: "Sign in to June",
           html: `<a href="${url}">Click here to sign in</a>`,
@@ -280,6 +282,8 @@ export const { useSession, signIn, signUp, signOut } = authClient;
 ```
 
 The provider structure (peer, sync, `JazzProvider` wrapper) stays identical.
+
+**Existing stored credentials:** Jazz stores auth credentials in `localStorage` under a key derived from the Jazz peer config. Switching auth adapters does not automatically clear stale Clerk credentials. The `AuthProvider` from `jazz-tools/better-auth/auth/react` will attempt to authenticate via the BetterAuth session; if it encounters stale Clerk-format credentials it cannot parse, it will fall back to a fresh anonymous/guest session. No explicit migration is needed — on first boot after the migration, the old key is silently ignored and a new BetterAuth-backed credential is written. This is acceptable since Jazz is removed entirely in the subsequent `feat/tiered-sync` branch.
 
 ---
 
