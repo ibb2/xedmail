@@ -51,7 +51,15 @@ export default function LoginPage() {
 
   const handleGoogle = async () => {
     setError(null);
-    await authClient.signIn.social({ provider: "google", callbackURL: "/" });
+    setLoading(true);
+    try {
+      const res = await authClient.signIn.social({ provider: "google", callbackURL: "/" });
+      if (res?.error) setError(res.error.message ?? "Google sign-in failed");
+    } catch {
+      setError("Google sign-in failed");
+    } finally {
+      setLoading(false);
+    }
   };
 
   const handleEmailPassword = async (e: React.FormEvent) => {
