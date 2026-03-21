@@ -73,7 +73,8 @@ Turso (libsql)
 | `src/app/inbox/page.tsx` | Replace `useAuth` with `useSession` |
 | `src/components/app-sidebar.tsx` | Replace `currentUser()` with BetterAuth server session |
 | `src/providers/jazz-provider.tsx` | Replace `JazzClerkAuth` with Jazz BetterAuth plugin |
-| `package.json` | Add `better-auth`, `@better-auth/libsql`; remove `@clerk/nextjs` |
+| `src/components/inbox/inbox-client.tsx` | Replace `useAuth`/`useUser` with `useSession`; remove all `getToken()` calls (see note below) |
+| `package.json` | Add `better-auth`, `@better-auth/libsql`, `resend`; remove `@clerk/nextjs` |
 | `proxy.ts` | **Delete** — replaced by `middleware.ts` |
 
 ---
@@ -108,7 +109,7 @@ export const auth = betterAuth({
         const { Resend } = await import("resend");
         const resend = new Resend(process.env.RESEND_API_KEY);
         await resend.emails.send({
-          from: "noreply@yourdomain.com",
+          from: process.env.RESEND_FROM_EMAIL!, // e.g. "noreply@yourdomain.com"
           to: email,
           subject: "Sign in to June",
           html: `<a href="${url}">Click here to sign in</a>`,
@@ -140,9 +141,9 @@ export const { useSession, signIn, signUp, signOut } = createAuthClient({
 ## Middleware (`src/middleware.ts`)
 
 - Reads session token from cookies via BetterAuth's `auth.api.getSession`
-- Unprotected paths: `/login`, `/api/auth/(.*)`, `/_next/(.*)`, static assets
-- Page routes: redirect unauthenticated requests to `/login`
-- API routes (non-auth): return `401 { error: "UNAUTHORIZED" }`
+- Unprotected paths: `/login`, `/api/auth/(.*)`, `/_next/(.*)`, static assets (images, fonts, etc.)
+- **Protected page routes:** `/` (home), `/inbox`, `/settings` and any sub-paths — redirect unauthenticated requests to `/login`
+- **Protected API routes** (non-auth, e.g. `/api/mail/(.*)`): return `401 { error: "UNAUTHORIZED" }` as JSON
 - Replaces `proxy.ts` entirely; `proxy.ts` is deleted
 
 ---
@@ -162,13 +163,19 @@ export async function requireUserId(): Promise<string> {
 
 All API routes call `requireUserId()` — no other changes needed.
 
+**Removing `getToken()` calls:** The existing client files (`page.tsx`, `inbox/page.tsx`, `inbox-client.tsx`) call `getToken()` from `useAuth()` and pass `Authorization: Bearer <token>` on every fetch. BetterAuth authenticates via cookies (httpOnly), not bearer tokens. The API routes already validate via `requireUserId()` on the server side using cookies — the `Authorization` header is never checked. Therefore: **remove all `getToken()` calls and `Authorization: Bearer` headers** from every client file. No replacement is needed; the server-side cookie validation is sufficient.
+
 ---
 
 ## Database Schema
 
 BetterAuth auto-creates its four tables (`user`, `session`, `account`, `verification`) on first boot via the libsql adapter.
 
-App tables are recreated in `src/lib/db.ts` with `user_id` replacing `clerk_user_id`:
+App tables are recreated in `src/lib/db.ts` with `user_id` replacing `clerk_user_id`.
+
+**`user_profiles` creation:** A row is upserted into `user_profiles` on every successful sign-in, using a BetterAuth `onSession` or `onSignIn` hook in `auth.ts`. This ensures the FK constraint in `mailboxes` is always satisfied before a mailbox is added. The `user_id` value is the BetterAuth `user.id`.
+
+**`scheduled_emails`**: No FK to `user_profiles` — intentional. The scheduler is a background worker that may run after a user is deleted; a hard FK would block cleanup. `user_id` is still stored for filtering.
 
 ```sql
 CREATE TABLE IF NOT EXISTS user_profiles (
@@ -235,7 +242,12 @@ No separate `/signup` route — sign-up is a mode toggle on `/login`. After succ
 
 ## Jazz Provider Update (`src/providers/jazz-provider.tsx`)
 
-Jazz-tools ships a BetterAuth plugin. Replace:
+Jazz-tools ships a BetterAuth plugin. The confirmed export paths (verified against `node_modules/jazz-tools/package.json`) are:
+
+- `jazz-tools/better-auth/auth/client` → exports `jazzPluginClient`
+- `jazz-tools/better-auth/auth/react` → exports `AuthProvider`
+
+Replace in `jazz-provider.tsx`:
 
 ```typescript
 // Before
@@ -244,11 +256,27 @@ import { JazzClerkAuth } from "jazz-tools";
 // ...
 const auth = new JazzClerkAuth(useClerk(), useUser());
 
-// After
-import { useBetterAuth } from "jazz-tools/better-auth"; // exact path TBD — check jazz-tools dist
-import { useSession, signIn, signOut } from "@/lib/auth-client";
-// ...
-const auth = useBetterAuth({ useSession, signIn, signOut });
+// After — add jazzPluginClient() to createAuthClient plugins:
+import { jazzPluginClient } from "jazz-tools/better-auth/auth/client";
+import { AuthProvider } from "jazz-tools/better-auth/auth/react";
+// auth-client.ts must include jazzPluginClient() in its plugins array
+
+// In provider: wrap JazzProvider children with AuthProvider:
+<AuthProvider betterAuthClient={authClient}>
+  {children}
+</AuthProvider>
+```
+
+`src/lib/auth-client.ts` must include `jazzPluginClient()` as a plugin:
+
+```typescript
+import { jazzPluginClient } from "jazz-tools/better-auth/auth/client";
+
+export const authClient = createAuthClient({
+  baseURL: process.env.NEXT_PUBLIC_BETTER_AUTH_URL ?? "",
+  plugins: [magicLinkClient(), jazzPluginClient()],
+});
+export const { useSession, signIn, signUp, signOut } = authClient;
 ```
 
 The provider structure (peer, sync, `JazzProvider` wrapper) stays identical.
@@ -269,6 +297,7 @@ BETTER_AUTH_SECRET          # random string, min 32 chars — signs sessions
 BETTER_AUTH_URL             # e.g. http://localhost:3000
 NEXT_PUBLIC_BETTER_AUTH_URL # same value, exposed to browser
 RESEND_API_KEY              # placeholder — magic link email (console fallback if unset)
+RESEND_FROM_EMAIL           # e.g. noreply@yourdomain.com — placeholder, required for production
 ```
 
 ### Keep (reused)
