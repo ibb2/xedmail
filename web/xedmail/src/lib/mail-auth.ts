@@ -37,10 +37,10 @@ async function ensureValidMailboxToken(mailbox: MailboxRecord): Promise<MailboxA
 }
 
 export async function getValidMailboxForUser(
-  clerkUserId: string,
+  userId: string,
   emailAddress: string,
 ): Promise<MailboxAccess> {
-  const mailbox = await getMailboxByEmail(clerkUserId, emailAddress);
+  const mailbox = await getMailboxByEmail(userId, emailAddress);
 
   if (!mailbox) {
     throw new Error("MAILBOX_NOT_FOUND");
@@ -50,9 +50,9 @@ export async function getValidMailboxForUser(
 }
 
 export async function getValidMailboxesForUser(
-  clerkUserId: string,
+  userId: string,
 ): Promise<MailboxAccess[]> {
-  const mailboxes = await getUserMailboxes(clerkUserId);
+  const mailboxes = await getUserMailboxes(userId);
   const active = mailboxes.filter((mailbox) => mailbox.isActive);
 
   return Promise.all(active.map((mailbox) => ensureValidMailboxToken(mailbox)));

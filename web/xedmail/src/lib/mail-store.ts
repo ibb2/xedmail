@@ -15,7 +15,7 @@ type TokenPayload = {
 function rowToMailbox(row: Row): MailboxRecord {
   return {
     id: String(row.id),
-    clerkUserId: String(row.clerk_user_id),
+    userId: String(row.user_id),
     provider: String(row.provider) as Provider,
     emailAddress: String(row.email_address),
     image: row.image ? String(row.image) : null,
@@ -42,7 +42,7 @@ function rowToMailbox(row: Row): MailboxRecord {
 }
 
 export async function createOAuthState(
-  clerkUserId: string,
+  userId: string,
   provider: Provider,
 ): Promise<OAuthState> {
   await ensureDatabaseSchema();
@@ -52,13 +52,13 @@ export async function createOAuthState(
 
   await db.execute({
     sql: `
-      INSERT INTO oauth_states (state, clerk_user_id, provider, created_at)
+      INSERT INTO oauth_states (state, user_id, provider, created_at)
       VALUES (?, ?, ?, ?)
     `,
-    args: [state, clerkUserId, provider, createdAt],
+    args: [state, userId, provider, createdAt],
   });
 
-  return { state, clerkUserId, provider, createdAt };
+  return { state, userId, provider, createdAt };
 }
 
 export async function consumeOAuthState(state: string): Promise<OAuthState | null> {
@@ -69,7 +69,7 @@ export async function consumeOAuthState(state: string): Promise<OAuthState | nul
   try {
     const result = await tx.execute({
       sql: `
-        SELECT state, clerk_user_id, provider, created_at
+        SELECT state, user_id, provider, created_at
         FROM oauth_states
         WHERE state = ?
       `,
@@ -91,7 +91,7 @@ export async function consumeOAuthState(state: string): Promise<OAuthState | nul
     const row = result.rows[0];
     return {
       state: String(row.state),
-      clerkUserId: String(row.clerk_user_id),
+      userId: String(row.user_id),
       provider: String(row.provider) as Provider,
       createdAt: Number(row.created_at),
     };
@@ -101,34 +101,32 @@ export async function consumeOAuthState(state: string): Promise<OAuthState | nul
   }
 }
 
-async function ensureUserProfile(clerkUserId: string): Promise<void> {
+async function ensureUserProfile(userId: string): Promise<void> {
   const db = getDbClient();
   const now = Date.now();
   await db.execute({
-    sql: `
-      INSERT INTO user_profiles (clerk_user_id, created_at, updated_at)
-      VALUES (?, ?, ?)
-      ON CONFLICT(clerk_user_id) DO UPDATE SET updated_at = excluded.updated_at
-    `,
-    args: [clerkUserId, now, now],
+    sql: `INSERT INTO user_profiles (user_id, created_at, updated_at)
+          VALUES (?, ?, ?)
+          ON CONFLICT(user_id) DO UPDATE SET updated_at = excluded.updated_at`,
+    args: [userId, now, now],
   });
 }
 
 export async function upsertMailbox(
-  clerkUserId: string,
+  userId: string,
   provider: Provider,
   emailAddress: string,
   payload: TokenPayload,
 ): Promise<void> {
   await ensureDatabaseSchema();
-  await ensureUserProfile(clerkUserId);
+  await ensureUserProfile(userId);
 
   const db = getDbClient();
   const now = Date.now();
 
   const args: InValue[] = [
     randomUUID(),
-    clerkUserId,
+    userId,
     provider,
     emailAddress,
     payload.image ?? null,
@@ -144,12 +142,12 @@ export async function upsertMailbox(
   await db.execute({
     sql: `
       INSERT INTO mailboxes (
-        id, clerk_user_id, provider, email_address, image,
+        id, user_id, provider, email_address, image,
         access_token, refresh_token, access_token_expires_at,
         scopes, provider_metadata_json,
         created_at, updated_at
       ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-      ON CONFLICT(clerk_user_id, provider, email_address)
+      ON CONFLICT(user_id, provider, email_address)
       DO UPDATE SET
         image = excluded.image,
         access_token = excluded.access_token,
@@ -164,7 +162,7 @@ export async function upsertMailbox(
   });
 }
 
-export async function getUserMailboxes(clerkUserId: string): Promise<MailboxRecord[]> {
+export async function getUserMailboxes(userId: string): Promise<MailboxRecord[]> {
   await ensureDatabaseSchema();
   const db = getDbClient();
 
@@ -172,17 +170,17 @@ export async function getUserMailboxes(clerkUserId: string): Promise<MailboxReco
     sql: `
       SELECT *
       FROM mailboxes
-      WHERE clerk_user_id = ? AND is_active = 1
+      WHERE user_id = ? AND is_active = 1
       ORDER BY updated_at DESC
     `,
-    args: [clerkUserId],
+    args: [userId],
   });
 
   return result.rows.map(rowToMailbox);
 }
 
 export async function getMailboxByEmail(
-  clerkUserId: string,
+  userId: string,
   emailAddress: string,
 ): Promise<MailboxRecord | null> {
   await ensureDatabaseSchema();
@@ -192,10 +190,10 @@ export async function getMailboxByEmail(
     sql: `
       SELECT *
       FROM mailboxes
-      WHERE clerk_user_id = ? AND email_address = ? AND is_active = 1
+      WHERE user_id = ? AND email_address = ? AND is_active = 1
       LIMIT 1
     `,
-    args: [clerkUserId, emailAddress],
+    args: [userId, emailAddress],
   });
 
   const row = result.rows[0];
@@ -243,7 +241,7 @@ export function toMailboxDto(mailbox: MailboxRecord): MailboxDto {
 
 export type ScheduledEmailRecord = {
   id: string;
-  clerkUserId: string;
+  userId: string;
   mailboxAddress: string;
   toAddress: string;
   subject: string;
@@ -258,7 +256,7 @@ export type ScheduledEmailRecord = {
 function rowToScheduledEmail(row: Row): ScheduledEmailRecord {
   return {
     id: String(row.id),
-    clerkUserId: String(row.clerk_user_id),
+    userId: String(row.user_id),
     mailboxAddress: String(row.mailbox_address),
     toAddress: String(row.to_address),
     subject: String(row.subject),
@@ -273,7 +271,7 @@ function rowToScheduledEmail(row: Row): ScheduledEmailRecord {
 
 export async function insertScheduledEmail(opts: {
   id: string;
-  clerkUserId: string;
+  userId: string;
   mailboxAddress: string;
   toAddress: string;
   subject: string;
@@ -287,12 +285,12 @@ export async function insertScheduledEmail(opts: {
   await db.execute({
     sql: `
       INSERT INTO scheduled_emails
-        (id, clerk_user_id, mailbox_address, to_address, subject, body,
+        (id, user_id, mailbox_address, to_address, subject, body,
          in_reply_to, "references", send_at, sent, sending)
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0)
     `,
     args: [
-      opts.id, opts.clerkUserId, opts.mailboxAddress, opts.toAddress,
+      opts.id, opts.userId, opts.mailboxAddress, opts.toAddress,
       opts.subject, opts.body,
       opts.inReplyTo ?? null, opts.references ?? null, opts.sendAt,
     ],
@@ -300,13 +298,13 @@ export async function insertScheduledEmail(opts: {
 }
 
 export async function getUnsentScheduledEmailsForUser(
-  clerkUserId: string,
+  userId: string,
 ): Promise<ScheduledEmailRecord[]> {
   await ensureDatabaseSchema();
   const db = getDbClient();
   const result = await db.execute({
-    sql: `SELECT * FROM scheduled_emails WHERE clerk_user_id = ? AND sent = 0 ORDER BY send_at ASC`,
-    args: [clerkUserId],
+    sql: `SELECT * FROM scheduled_emails WHERE user_id = ? AND sent = 0 ORDER BY send_at ASC`,
+    args: [userId],
   });
   return result.rows.map(rowToScheduledEmail);
 }
