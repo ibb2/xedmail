@@ -72,13 +72,6 @@ function getSyncConfig() {
   return { when: "never" as const };
 }
 
-function hasJazzSyncPeer() {
-  const peer = process.env.NEXT_PUBLIC_JAZZ_SYNC_PEER;
-  return Boolean(
-    peer && (peer.startsWith("ws://") || peer.startsWith("wss://")),
-  );
-}
-
 function setupKvStore() {
   KvStoreContext.getInstance().initialize(
     typeof window === "undefined"
@@ -456,6 +449,7 @@ export function JazzProvider({ children }: { children: React.ReactNode }) {
       onLogOut={() => authClient.signOut()}
       authSecretStorageKey={JAZZ_AUTH_SECRET_STORAGE_KEY}
     >
+      {/* authClient includes magicLinkClient() in its plugins tuple; cast is safe because AuthProvider only consumes the Jazz plugin surface */}
       <AuthProvider betterAuthClient={authClient as unknown as JazzAuthClient}>
         <JazzInboxStateProvider>{children}</JazzInboxStateProvider>
       </AuthProvider>
