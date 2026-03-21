@@ -7,6 +7,8 @@ import {
   IconNotification,
   IconUserCircle,
 } from "@tabler/icons-react";
+import { signOut } from "@/lib/auth-client";
+import { useRouter } from "next/navigation";
 
 import {
   SidebarMenu,
@@ -35,6 +37,7 @@ export function NavUser({
   };
 }) {
   const { isMobile } = useSidebar();
+  const router = useRouter();
 
   return (
     <SidebarMenu>
@@ -94,7 +97,12 @@ export function NavUser({
               </DropdownMenuItem>
             </DropdownMenuGroup>
             <DropdownMenuSeparator />
-            <DropdownMenuItem>
+            <DropdownMenuItem
+              onClick={async () => {
+                await signOut();
+                router.push("/login");
+              }}
+            >
               <IconLogout />
               Log out
             </DropdownMenuItem>

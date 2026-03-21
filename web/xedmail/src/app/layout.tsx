@@ -1,7 +1,5 @@
 import type { Metadata } from "next";
 import "./globals.css";
-import { ClerkProvider } from "@clerk/nextjs";
-import { JazzInspector } from "jazz-tools/inspector";
 import { JazzProvider } from "@/providers/jazz-provider";
 
 export const metadata: Metadata = {
@@ -15,8 +13,7 @@ export default function RootLayout({
   children: React.ReactNode;
 }>) {
   return (
-    <ClerkProvider>
-      <html lang="en" className="dark">
+    <html lang="en" className="dark">
         <head>
           <link rel="preconnect" href="https://fonts.googleapis.com" />
           <link rel="preconnect" href="https://fonts.gstatic.com" crossOrigin="anonymous" />
@@ -30,11 +27,10 @@ export default function RootLayout({
           />
         </head>
         <body className="antialiased">
-          <JazzProvider>      
+          <JazzProvider>
               {children}
             </JazzProvider>
         </body>
       </html>
-    </ClerkProvider>
   );
 }

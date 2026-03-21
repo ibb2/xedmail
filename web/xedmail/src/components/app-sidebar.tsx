@@ -15,7 +15,8 @@ import {
   SidebarMenuSubItem,
 } from "@/components/ui/sidebar";
 import { NavUser } from "./nav-user";
-import { currentUser } from "@clerk/nextjs/server";
+import { auth } from "@/lib/auth";
+import { headers } from "next/headers";
 
 // This is sample data.
 const data = {
@@ -161,7 +162,8 @@ const data = {
 export async function AppSidebar({
   ...props
 }: React.ComponentProps<typeof Sidebar>) {
-  const userData = await currentUser();
+  const session = await auth.api.getSession({ headers: await headers() });
+  const userData = session?.user ?? null;
 
   return (
     <Sidebar variant="floating" collapsible="icon" {...props}>
@@ -211,9 +213,9 @@ export async function AppSidebar({
       <SidebarFooter>
         <NavUser
           user={{
-            name: userData?.username ?? "shadcn",
-            email: userData?.emailAddresses[0].emailAddress ?? "m@example.com",
-            avatar: userData?.imageUrl ?? "/avatars/shadcn.jpg",
+            name: userData?.name ?? "",
+            email: userData?.email ?? "",
+            avatar: "",
           }}
         />
       </SidebarFooter>

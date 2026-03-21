@@ -1,6 +1,6 @@
 "use client";
 
-import { useAuth, useUser } from "@clerk/nextjs";
+import { useSession } from "@/lib/auth-client";
 import hotkeys from "hotkeys-js";
 import { useRouter } from "next/navigation";
 import React, { useEffect, useMemo, useRef, useState } from "react";
@@ -46,20 +46,16 @@ export default function Home() {
   const searchRef = useRef<HTMLInputElement>(null);
   const [query, setQuery] = useState("");
   const [ran, setRan] = useState(false);
-  const { getToken } = useAuth();
-  const { user } = useUser();
+  const { data: session } = useSession();
 
-  const firstName = user?.firstName ?? "there";
+  const firstName = session?.user?.name?.split(" ")[0] ?? "there";
 
   const hour = new Date().getHours();
   const greeting =
     hour < 12 ? "Good morning" : hour < 17 ? "Good afternoon" : "Good evening";
 
   const beginOauthFlow = async () => {
-    const token = await getToken();
-    const response = await fetch("/api/mail/oauth/start", {
-      headers: { Authorization: `Bearer ${token}` },
-    });
+    const response = await fetch("/api/mail/oauth/start", {});
     if (!response.ok) {
       console.error("Failed to start OAuth flow");
       return;
@@ -69,10 +65,7 @@ export default function Home() {
   };
 
   const getMailboxes = async () => {
-    const token = await getToken();
-    const response = await fetch("/api/mail/mailboxes", {
-      headers: { Authorization: `Bearer ${token}` },
-    });
+    const response = await fetch("/api/mail/mailboxes", {});
     const nextMailboxes = await response.json();
     syncInbox({ messages, folders, mailboxes: nextMailboxes });
   };
@@ -193,7 +186,7 @@ export default function Home() {
                 fontFamily: "'Inter', sans-serif",
               }}
             >
-              {(user?.firstName?.[0] ?? "U").toUpperCase()}
+              {(session?.user?.name?.[0] ?? "U").toUpperCase()}
             </div>
             <span
               className="material-symbols-outlined"
