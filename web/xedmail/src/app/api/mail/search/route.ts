@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireClerkUserId } from "@/lib/api-auth";
+import { requireUserId } from "@/lib/api-auth";
 import { getFolders, getLatestInboxMessages, searchInboxMessages } from "@/lib/imap";
 import { getValidMailboxesForUser } from "@/lib/mail-auth";
 import { buildSearchObject } from "@/lib/mail-query";
@@ -15,8 +15,8 @@ export async function GET(request: Request) {
   const includeFolders = searchParams.get("includeFolders") !== "false";
 
   try {
-    const clerkUserId = await requireClerkUserId();
-    const mailboxes = await getValidMailboxesForUser(clerkUserId);
+    const userId = await requireUserId();
+    const mailboxes = await getValidMailboxesForUser(userId);
     const searchObject = query.trim()
       ? await buildSearchObject(query)
       : null;

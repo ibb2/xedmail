@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireClerkUserId } from "@/lib/api-auth";
+import { requireUserId } from "@/lib/api-auth";
 import { archiveEmail } from "@/lib/imap";
 import { getValidMailboxForUser } from "@/lib/mail-auth";
 
@@ -14,9 +14,9 @@ export async function POST(_request: Request, context: Context) {
   const decodedMailbox = decodeURIComponent(mailbox);
 
   try {
-    const clerkUserId = await requireClerkUserId();
+    const userId = await requireUserId();
     const { mailbox: mailboxRecord, accessToken } =
-      await getValidMailboxForUser(clerkUserId, decodedMailbox);
+      await getValidMailboxForUser(userId, decodedMailbox);
 
     const imapHost = process.env.IMAP_HOST ?? "imap.gmail.com";
     if (imapHost !== "imap.gmail.com") {

@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireClerkUserId } from "@/lib/api-auth";
+import { requireUserId } from "@/lib/api-auth";
 import { getValidMailboxForUser } from "@/lib/mail-auth";
 import { sendMail } from "@/lib/mail-send";
 
@@ -16,9 +16,9 @@ export async function POST(request: Request) {
       references?: string;
     };
 
-    const clerkUserId = await requireClerkUserId();
+    const userId = await requireUserId();
     const { mailbox: mailboxRecord, accessToken } =
-      await getValidMailboxForUser(clerkUserId, body.mailbox);
+      await getValidMailboxForUser(userId, body.mailbox);
 
     const messageId = await sendMail({
       from: mailboxRecord.emailAddress,
