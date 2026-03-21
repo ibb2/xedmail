@@ -37,7 +37,7 @@ export async function GET(request: Request) {
     const tokenData = await exchangeCodeForTokens(code);
     const profile = await getGoogleUserInfo(tokenData.accessToken);
 
-    await upsertMailbox(oauthState.clerkUserId, "Gmail", profile.email, {
+    await upsertMailbox(oauthState.userId, "Gmail", profile.email, {
       accessToken: tokenData.accessToken,
       refreshToken: tokenData.refreshToken,
       expiresAt: tokenData.expiresAt,
