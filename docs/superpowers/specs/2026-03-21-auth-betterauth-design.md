@@ -71,7 +71,7 @@ Turso (libsql)
 | `src/app/layout.tsx` | Remove `ClerkProvider`; no replacement provider needed |
 | `src/app/page.tsx` | Replace `useAuth`, `useUser` with `useSession` |
 | `src/app/inbox/page.tsx` | Replace `useAuth` with `useSession` |
-| `src/components/app-sidebar.tsx` | Replace `currentUser()` with BetterAuth server session |
+| `src/components/app-sidebar.tsx` | Replace `currentUser()` with BetterAuth server session — see note below |
 | `src/app/home/page.tsx` | Renders `<AppSidebar />` — no Clerk imports directly, but must be verified post-migration that it builds clean |
 | `src/components/nav-user.tsx` | Wire the "Log out" menu item to BetterAuth `signOut()` — currently a no-op |
 | `src/providers/jazz-provider.tsx` | Replace `JazzClerkAuth` with Jazz BetterAuth plugin |
@@ -169,6 +169,22 @@ export async function requireUserId(): Promise<string> {
 ```
 
 All API routes call `requireUserId()` — no other changes needed.
+
+---
+
+## AppSidebar Migration Note
+
+`app-sidebar.tsx` is a React Server Component. Replace `currentUser()` with:
+
+```typescript
+import { auth } from "@/lib/auth";
+import { headers } from "next/headers";
+
+const session = await auth.api.getSession({ headers: await headers() });
+const user = session?.user;
+```
+
+Pass to `NavUser`: `name: user?.name ?? ""`, `email: user?.email ?? ""`, `avatar: ""` (BetterAuth session does not provide an image URL — use empty string; the existing `NavUser` component already handles this with a fallback to initials).
 
 **Removing `getToken()` calls:** The existing client files (`page.tsx`, `inbox/page.tsx`, `inbox-client.tsx`) call `getToken()` from `useAuth()` and pass `Authorization: Bearer <token>` on every fetch. BetterAuth authenticates via cookies (httpOnly), not bearer tokens. The API routes already validate via `requireUserId()` on the server side using cookies — the `Authorization` header is never checked. Therefore: **remove all `getToken()` calls and `Authorization: Bearer` headers** from every client file. No replacement is needed; the server-side cookie validation is sufficient.
 
