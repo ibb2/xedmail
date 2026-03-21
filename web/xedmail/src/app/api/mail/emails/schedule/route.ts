@@ -27,7 +27,7 @@ export async function POST(request: Request) {
     const id = randomUUID();
     await insertScheduledEmail({
       id,
-      clerkUserId,
+      userId: clerkUserId,
       mailboxAddress: mailboxRecord.emailAddress,
       toAddress: body.to,
       subject: body.subject,
