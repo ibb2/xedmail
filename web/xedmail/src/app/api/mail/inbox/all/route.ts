@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireClerkUserId } from "@/lib/api-auth";
+import { requireUserId } from "@/lib/api-auth";
 import { searchInboxMessages } from "@/lib/imap";
 import { getValidMailboxForUser } from "@/lib/mail-auth";
 
@@ -17,8 +17,8 @@ export async function GET(request: Request) {
   }
 
   try {
-    const clerkUserId = await requireClerkUserId();
-    const mailbox = await getValidMailboxForUser(clerkUserId, email);
+    const userId = await requireUserId();
+    const mailbox = await getValidMailboxForUser(userId, email);
     const emails = await searchInboxMessages(
       {
         email: mailbox.mailbox.emailAddress,

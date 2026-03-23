@@ -37,7 +37,7 @@ Browser → Next.js App Router
 
 ### Key Layers
 
-**Authentication**: Clerk handles user auth. Google OAuth 2.0 manages per-mailbox Gmail credentials stored in Turso. Token refresh logic lives in `src/lib/mail-auth.ts`.
+**Authentication**: BetterAuth handles user auth (`src/lib/auth.ts` server, `src/lib/auth-client.ts` browser client). Auth methods: email+password, Google OAuth social sign-in, magic link via Resend. Session validated server-side via cookies in `src/middleware.ts` and `src/lib/api-auth.ts`. Google OAuth 2.0 also manages per-mailbox Gmail credentials stored in Turso. Token refresh logic lives in `src/lib/mail-auth.ts`.
 
 **Email fetching**: `src/lib/imap.ts` connects ImapFlow to `imap.gmail.com:993`. The inbox polls `/api/mail/search` every 30 seconds with debouncing via `isFetchingRef`.
 
@@ -53,7 +53,7 @@ Browser → Next.js App Router
 web/xedmail/src/
 ├── app/
 │   ├── page.tsx           # Search-first homepage
-│   ├── layout.tsx         # Root layout (Clerk + Jazz providers)
+│   ├── layout.tsx         # Root layout (JazzProvider wraps app)
 │   ├── inbox/page.tsx     # Inbox with 30s polling
 │   ├── settings/          # Account management
 │   └── api/mail/          # search/, oauth/, mailboxes/ routes
@@ -72,8 +72,9 @@ ms/
 
 Required in `web/xedmail/.env.local`:
 ```
-NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY
-CLERK_SECRET_KEY
+BETTER_AUTH_SECRET           # random string min 32 chars — signs sessions (openssl rand -base64 32)
+BETTER_AUTH_URL              # e.g. http://localhost:3000
+NEXT_PUBLIC_BETTER_AUTH_URL  # same value, exposed to browser
 TURSO_DATABASE_URL
 TURSO_AUTH_TOKEN
 GOOGLE_CLIENT_ID
@@ -87,6 +88,8 @@ IMAP_INBOX_NAME              # INBOX
 
 Optional:
 ```
+RESEND_API_KEY               # Magic link email via Resend (console fallback if unset)
+RESEND_FROM_EMAIL            # e.g. noreply@yourdomain.com
 NEXT_PUBLIC_JAZZ_SYNC_PEER   # WebSocket URL for cross-device Jazz sync
 MS_PARSER_URL                # Default: http://127.0.0.1:8000/parse
 ```

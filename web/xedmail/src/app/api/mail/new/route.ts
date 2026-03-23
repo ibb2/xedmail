@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireClerkUserId } from "@/lib/api-auth";
+import { requireUserId } from "@/lib/api-auth";
 import { withImapClient } from "@/lib/imap";
 import { getValidMailboxForUser } from "@/lib/mail-auth";
 import type { EmailDto } from "@/lib/mail-types";
@@ -30,9 +30,9 @@ export async function GET(request: Request) {
   }
 
   try {
-    const clerkUserId = await requireClerkUserId();
+    const userId = await requireUserId();
     const { mailbox: mailboxRecord, accessToken } =
-      await getValidMailboxForUser(clerkUserId, decodeURIComponent(mailbox));
+      await getValidMailboxForUser(userId, decodeURIComponent(mailbox));
 
     const emails: EmailDto[] = await withImapClient(
       { email: mailboxRecord.emailAddress, accessToken },

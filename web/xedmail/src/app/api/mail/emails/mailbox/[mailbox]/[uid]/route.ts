@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireClerkUserId } from "@/lib/api-auth";
+import { requireUserId } from "@/lib/api-auth";
 import { setReadStatus } from "@/lib/imap";
 import { getValidMailboxForUser } from "@/lib/mail-auth";
 
@@ -27,9 +27,9 @@ export async function PATCH(request: Request, context: Context) {
   const nextReadState = isReadParam === "true";
 
   try {
-    const clerkUserId = await requireClerkUserId();
+    const userId = await requireUserId();
     const mailboxData = await getValidMailboxForUser(
-      clerkUserId,
+      userId,
       decodeURIComponent(mailbox),
     );
 

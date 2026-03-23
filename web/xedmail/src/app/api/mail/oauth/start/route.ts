@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { requireClerkUserId } from "@/lib/api-auth";
+import { requireUserId } from "@/lib/api-auth";
 import { createGoogleAuthUrl } from "@/lib/google-oauth";
 import { createOAuthState } from "@/lib/mail-store";
 
@@ -7,8 +7,8 @@ export const runtime = "nodejs";
 
 export async function GET() {
   try {
-    const clerkUserId = await requireClerkUserId();
-    const oauthState = await createOAuthState(clerkUserId, "Gmail");
+    const userId = await requireUserId();
+    const oauthState = await createOAuthState(userId, "Gmail");
     const authUrl = createGoogleAuthUrl(oauthState.state);
 
     return NextResponse.json({ authUrl });

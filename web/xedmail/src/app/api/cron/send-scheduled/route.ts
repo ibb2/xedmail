@@ -30,7 +30,7 @@ export async function GET(request: Request) {
   for (const row of rows) {
     try {
       const { mailbox: mailboxRecord, accessToken } =
-        await getValidMailboxForUser(row.clerkUserId, row.mailboxAddress);
+        await getValidMailboxForUser(row.userId, row.mailboxAddress);
 
       await sendMail({
         from: mailboxRecord.emailAddress,

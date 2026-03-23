@@ -1,7 +1,7 @@
 // src/components/inbox/inbox-client.tsx
 "use client";
 
-import { useAuth, useUser } from "@clerk/nextjs";
+import { useSession } from "@/lib/auth-client";
 import DOMPurify from "dompurify";
 import hotkeys from "hotkeys-js";
 import { useRouter } from "next/navigation";
@@ -92,7 +92,7 @@ function EmailReader({
     emailDate.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" }) +
     " PST";
 
-  const { user } = useUser();
+  const { data: emailReaderSession } = useSession();
   const router = useRouter();
 
   return (
@@ -185,7 +185,7 @@ function EmailReader({
                 fontFamily: "'Inter', sans-serif",
               }}
             >
-              {(user?.firstName?.[0] ?? "U").toUpperCase()}
+              {(emailReaderSession?.user?.name?.[0] ?? "U").toUpperCase()}
             </div>
             <span
               className="material-symbols-outlined"
@@ -546,8 +546,7 @@ export default function InboxClient({
     blockSender,
     addRecentSearch,
   } = useJazzInboxState();
-  const { getToken } = useAuth();
-  const { user } = useUser();
+  const { data: session } = useSession();
   const router = useRouter();
 
   const sortedEmails = useMemo(
@@ -617,13 +616,11 @@ export default function InboxClient({
 
   const toggleRead = async (email: Email) => {
     if (!email) return;
-    const token = await getToken();
     await fetch(
       `/api/mail/emails/mailbox/${encodeURIComponent(email.mailboxAddress)}/${email.uid}?isRead=${email.isRead}`,
       {
         method: "PATCH",
         headers: {
-          Authorization: `Bearer ${token}`,
           "Content-Type": "application/json",
         },
       },
@@ -648,10 +645,9 @@ export default function InboxClient({
   };
 
   const fetchBody = async (email: Email) => {
-    const token = await getToken();
     const response = await fetch(
       `/api/mail/emails/${email.uid}?mailbox=${encodeURIComponent(email.mailboxAddress)}`,
-      { headers: { Authorization: `Bearer ${token}` } },
+      {},
     );
     if (!response.ok) return "";
     const res = await response.json();
@@ -683,10 +679,9 @@ export default function InboxClient({
   const handleArchive = React.useCallback(async () => {
     const target = isReaderOpen ? selectedEmail : focusedEmail;
     if (!target) return;
-    const token = await getToken();
     const response = await fetch(
       `/api/mail/emails/mailbox/${encodeURIComponent(target.mailboxAddress)}/${target.uid}/archive`,
-      { method: "POST", headers: { Authorization: `Bearer ${token}` } },
+      { method: "POST" },
     );
     if (response.ok) {
       archiveMessage({
@@ -699,7 +694,6 @@ export default function InboxClient({
     selectedEmail,
     focusedEmail,
     isReaderOpen,
-    getToken,
     archiveMessage,
     closeReader,
   ]);
@@ -770,11 +764,9 @@ export default function InboxClient({
     setComposeSending(true);
     setComposeError(null);
     try {
-      const token = await getToken();
       const res = await fetch("/api/mail/emails/send", {
         method: "POST",
         headers: {
-          Authorization: `Bearer ${token}`,
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
@@ -810,11 +802,9 @@ export default function InboxClient({
     setComposeSending(true);
     setComposeError(null);
     try {
-      const token = await getToken();
       const res = await fetch("/api/mail/emails/schedule", {
         method: "POST",
         headers: {
-          Authorization: `Bearer ${token}`,
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
@@ -1029,7 +1019,7 @@ export default function InboxClient({
                   fontFamily: "'Inter', sans-serif",
                 }}
               >
-                {(user?.firstName?.[0] ?? "U").toUpperCase()}
+                {(session?.user?.name?.[0] ?? "U").toUpperCase()}
               </div>
               <span
                 className="material-symbols-outlined"

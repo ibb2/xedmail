@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { NextResponse } from "next/server";
-import { requireClerkUserId } from "@/lib/api-auth";
+import { requireUserId } from "@/lib/api-auth";
 import { getValidMailboxForUser } from "@/lib/mail-auth";
 import { insertScheduledEmail } from "@/lib/mail-store";
 
@@ -18,16 +18,16 @@ export async function POST(request: Request) {
       sendAt: string;
     };
 
-    const clerkUserId = await requireClerkUserId();
+    const userId = await requireUserId();
     const { mailbox: mailboxRecord } = await getValidMailboxForUser(
-      clerkUserId,
+      userId,
       body.mailbox,
     );
 
     const id = randomUUID();
     await insertScheduledEmail({
       id,
-      clerkUserId,
+      userId: userId,
       mailboxAddress: mailboxRecord.emailAddress,
       toAddress: body.to,
       subject: body.subject,

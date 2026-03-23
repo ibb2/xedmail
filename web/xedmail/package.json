@@ -10,7 +10,6 @@
     "format": "biome format --write"
   },
   "dependencies": {
-    "@clerk/nextjs": "^7.0.5",
     "@libsql/client": "^0.17.0",
     "@radix-ui/react-avatar": "^1.1.10",
     "@radix-ui/react-dialog": "^1.1.15",
@@ -19,17 +18,20 @@
     "@radix-ui/react-slot": "^1.2.3",
     "@radix-ui/react-tooltip": "^1.2.8",
     "@tabler/icons-react": "^3.35.0",
+    "better-auth": "^1.5.5",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "dompurify": "^3.2.7",
     "hotkeys-js": "^4.0.2",
     "imapflow": "^1.2.15",
     "jazz-tools": "^0.20.14",
+    "kysely-libsql": "^0.7.1",
     "lucide-react": "^0.544.0",
     "next": "16.2.0",
     "nodemailer": "^8.0.3",
     "react": "19.2.4",
     "react-dom": "19.2.4",
+    "resend": "^6.9.4",
     "tailwind-merge": "^3.3.1"
   },
   "devDependencies": {

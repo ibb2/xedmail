@@ -1,5 +1,5 @@
 "use client";
-import { useAuth } from "@clerk/nextjs";
+import { useSession } from "@/lib/auth-client";
 import { useSearchParams } from "next/navigation";
 import React from "react";
 import InboxClient from "@/components/inbox/inbox-client";
@@ -10,7 +10,7 @@ const POLL_INTERVAL_MS = 30000;
 const SPARSE_THRESHOLD = 5;
 
 export default function Inbox() {
-  const { getToken } = useAuth();
+  const { data: _session } = useSession();
   const {
     isLoaded: isJazzLoaded,
     messages,
@@ -120,14 +120,11 @@ export default function Inbox() {
       if (!hasCachedMessages) setIsLoading(true);
 
       try {
-        const token = await getToken();
-
         if (!hasCachedMessages) {
           // No cached data — initial full fetch from IMAP
           const response = await fetch(
             `/api/mail/search?query=&includeFolders=${includeFolders}`,
             {
-              headers: { Authorization: `Bearer ${token}` },
               cache: "no-store",
               signal: abortController.signal,
             },
@@ -158,7 +155,6 @@ export default function Inbox() {
             const response = await fetch(
               `/api/mail/new?minUid=${maxUid}&mailbox=${encodeURIComponent(mailboxAddress)}`,
               {
-                headers: { Authorization: `Bearer ${token}` },
                 cache: "no-store",
                 signal: abortController.signal,
               },
@@ -185,7 +181,6 @@ export default function Inbox() {
           const response = await fetch(
             `/api/mail/search?query=${encodeURIComponent(query)}&includeFolders=false`,
             {
-              headers: { Authorization: `Bearer ${token}` },
               cache: "no-store",
               signal: abortController.signal,
             },
@@ -217,7 +212,6 @@ export default function Inbox() {
         // Sync scheduled emails
         if (requestIdRef.current === requestId) {
           const scheduledResponse = await fetch("/api/mail/scheduled", {
-            headers: { Authorization: `Bearer ${token}` },
             signal: abortController.signal,
           });
           if (scheduledResponse.ok && requestIdRef.current === requestId) {
@@ -234,7 +228,7 @@ export default function Inbox() {
         }
       }
     },
-    [getToken, query, intent, resurfaceSnoozedMessages],
+    [query, intent, resurfaceSnoozedMessages],
   );
 
   React.useEffect(() => {

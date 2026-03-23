@@ -1,13 +1,13 @@
 import { NextResponse } from "next/server";
-import { requireClerkUserId } from "@/lib/api-auth";
+import { requireUserId } from "@/lib/api-auth";
 import { getUserMailboxes, toMailboxDto } from "@/lib/mail-store";
 
 export const runtime = "nodejs";
 
 export async function GET() {
   try {
-    const clerkUserId = await requireClerkUserId();
-    const mailboxes = await getUserMailboxes(clerkUserId);
+    const userId = await requireUserId();
+    const mailboxes = await getUserMailboxes(userId);
 
     return NextResponse.json(mailboxes.map(toMailboxDto));
   } catch (error) {

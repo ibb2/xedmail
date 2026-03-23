@@ -26,26 +26,21 @@ export function getDbClient(): Client {
 }
 
 export async function ensureDatabaseSchema(): Promise<void> {
-  if (initialized) {
-    return;
-  }
+  if (initialized) return;
 
   const db = getDbClient();
 
   await db.batch(
     [
-      `
-      CREATE TABLE IF NOT EXISTS user_profiles (
-        clerk_user_id TEXT PRIMARY KEY,
+      `CREATE TABLE IF NOT EXISTS user_profiles (
+        user_id TEXT PRIMARY KEY,
         display_name TEXT,
         created_at INTEGER NOT NULL,
         updated_at INTEGER NOT NULL
-      );
-      `,
-      `
-      CREATE TABLE IF NOT EXISTS mailboxes (
+      );`,
+      `CREATE TABLE IF NOT EXISTS mailboxes (
         id TEXT PRIMARY KEY,
-        clerk_user_id TEXT NOT NULL,
+        user_id TEXT NOT NULL,
         provider TEXT NOT NULL,
         email_address TEXT NOT NULL,
         image TEXT,
@@ -58,22 +53,18 @@ export async function ensureDatabaseSchema(): Promise<void> {
         provider_metadata_json TEXT,
         created_at INTEGER NOT NULL,
         updated_at INTEGER NOT NULL,
-        UNIQUE(clerk_user_id, provider, email_address),
-        FOREIGN KEY (clerk_user_id) REFERENCES user_profiles(clerk_user_id)
-      );
-      `,
-      `
-      CREATE TABLE IF NOT EXISTS oauth_states (
+        UNIQUE(user_id, provider, email_address),
+        FOREIGN KEY (user_id) REFERENCES user_profiles(user_id)
+      );`,
+      `CREATE TABLE IF NOT EXISTS oauth_states (
         state TEXT PRIMARY KEY,
-        clerk_user_id TEXT NOT NULL,
+        user_id TEXT NOT NULL,
         provider TEXT NOT NULL,
         created_at INTEGER NOT NULL
-      );
-      `,
-      `
-      CREATE TABLE IF NOT EXISTS scheduled_emails (
+      );`,
+      `CREATE TABLE IF NOT EXISTS scheduled_emails (
         id TEXT PRIMARY KEY,
-        clerk_user_id TEXT NOT NULL,
+        user_id TEXT NOT NULL,
         mailbox_address TEXT NOT NULL,
         to_address TEXT NOT NULL,
         subject TEXT NOT NULL,
@@ -83,8 +74,7 @@ export async function ensureDatabaseSchema(): Promise<void> {
         send_at INTEGER NOT NULL,
         sent INTEGER NOT NULL DEFAULT 0,
         sending INTEGER NOT NULL DEFAULT 0
-      );
-      `,
+      );`,
     ],
     "write",
   );

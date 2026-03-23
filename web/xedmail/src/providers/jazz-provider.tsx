@@ -1,20 +1,16 @@
 "use client";
 
-import { useClerk, useUser } from "@clerk/nextjs";
-import {
-  AuthSecretStorage,
-  co,
-  InMemoryKVStore,
-  isClerkCredentials,
-  JazzClerkAuth,
-  KvStoreContext,
-} from "jazz-tools";
+import { AuthProvider } from "jazz-tools/better-auth/auth/react";
+import { jazzPluginClient } from "jazz-tools/better-auth/auth/client";
+import { createAuthClient } from "better-auth/client";
+import { authClient } from "@/lib/auth-client";
+
+type JazzAuthClient = ReturnType<typeof createAuthClient<{ plugins: [ReturnType<typeof jazzPluginClient>] }>>;
+import { co, InMemoryKVStore, KvStoreContext } from "jazz-tools";
 import { LocalStorageKVStore } from "jazz-tools/browser";
 import {
   JazzReactProvider,
   useAccount,
-  useAuthSecretStorage,
-  useJazzContextValue,
 } from "jazz-tools/react";
 import { createContext, useContext, useEffect, useMemo, useState } from "react";
 import {
@@ -76,13 +72,6 @@ function getSyncConfig() {
   return { when: "never" as const };
 }
 
-function hasJazzSyncPeer() {
-  const peer = process.env.NEXT_PUBLIC_JAZZ_SYNC_PEER;
-  return Boolean(
-    peer && (peer.startsWith("ws://") || peer.startsWith("wss://")),
-  );
-}
-
 function setupKvStore() {
   KvStoreContext.getInstance().initialize(
     typeof window === "undefined"
@@ -91,87 +80,6 @@ function setupKvStore() {
   );
 }
 
-async function initializeClerkAuth(clerk: ReturnType<typeof useClerk>) {
-  const storage = new AuthSecretStorage(JAZZ_AUTH_SECRET_STORAGE_KEY);
-  const allowRemoteAccountRestore = hasJazzSyncPeer();
-
-  if (!allowRemoteAccountRestore) {
-    const existingCredentials = await storage.get();
-    if (existingCredentials?.provider === "clerk") {
-      await storage.clearWithoutNotify();
-    }
-    return;
-  }
-
-  if (isClerkCredentials(clerk.user?.unsafeMetadata)) {
-    await JazzClerkAuth.loadClerkAuthData(clerk.user.unsafeMetadata, storage);
-  }
-}
-
-function RegisterClerkAuth({
-  clerk,
-  children,
-}: {
-  clerk: ReturnType<typeof useClerk>;
-  children: React.ReactNode;
-}) {
-  const context = useJazzContextValue();
-  const authSecretStorage = useAuthSecretStorage();
-  const allowRemoteAccountRestore = hasJazzSyncPeer();
-
-  useEffect(() => {
-    if ("guest" in context) {
-      throw new Error("Clerk auth is not supported in guest mode");
-    }
-
-    const authMethod = new JazzClerkAuth(
-      context.authenticate,
-      context.logOut,
-      authSecretStorage,
-    );
-
-    const handleUserChange = async (
-      user: typeof clerk.user | null | undefined,
-    ) => {
-      if (!user) {
-        if (authSecretStorage.isAuthenticated) {
-          await authSecretStorage.clear();
-          await context.logOut();
-        }
-        return;
-      }
-
-      if (authSecretStorage.isAuthenticated) {
-        return;
-      }
-
-      if (
-        allowRemoteAccountRestore &&
-        isClerkCredentials(user.unsafeMetadata)
-      ) {
-        await authMethod.logIn(
-          user as unknown as Parameters<typeof authMethod.logIn>[0],
-        );
-        return;
-      }
-
-      const currentCredentials = await authSecretStorage.get();
-      if (currentCredentials) {
-        await authMethod.signIn(
-          user as unknown as Parameters<typeof authMethod.signIn>[0],
-        );
-      }
-    };
-
-    void handleUserChange(clerk.user);
-
-    return clerk.addListener((event) => {
-      void handleUserChange(event.user);
-    });
-  }, [allowRemoteAccountRestore, authSecretStorage, clerk, context]);
-
-  return children;
-}
 
 function JazzInboxStateProvider({ children }: { children: React.ReactNode }) {
   const me = useAccount(JazzMailAccount, {
@@ -524,37 +432,27 @@ function JazzInboxStateProvider({ children }: { children: React.ReactNode }) {
 }
 
 export function JazzProvider({ children }: { children: React.ReactNode }) {
-  const clerk = useClerk();
-  const { isLoaded: isUserLoaded, user } = useUser();
-  const [isLoaded, setIsLoaded] = useState(false);
+  const [isReady, setIsReady] = useState(false);
 
   useEffect(() => {
-    if (!isUserLoaded) {
-      return;
-    }
-
     setupKvStore();
+    setIsReady(true);
+  }, []);
 
-    initializeClerkAuth(clerk).then(() => {
-      setIsLoaded(true);
-    });
-  }, [clerk, isUserLoaded, user?.id, user?.unsafeMetadata]);
-
-  if (!isUserLoaded || !isLoaded) {
-    return null;
-  }
+  if (!isReady) return null;
 
   return (
     <JazzReactProvider
       AccountSchema={JazzMailAccount}
       sync={getSyncConfig()}
       fallback={null}
-      onLogOut={clerk.signOut}
+      onLogOut={() => authClient.signOut()}
       authSecretStorageKey={JAZZ_AUTH_SECRET_STORAGE_KEY}
     >
-      <RegisterClerkAuth clerk={clerk}>
+      {/* authClient includes magicLinkClient() in its plugins tuple; cast is safe because AuthProvider only consumes the Jazz plugin surface */}
+      <AuthProvider betterAuthClient={authClient as unknown as JazzAuthClient}>
         <JazzInboxStateProvider>{children}</JazzInboxStateProvider>
-      </RegisterClerkAuth>
+      </AuthProvider>
     </JazzReactProvider>
   );
 }

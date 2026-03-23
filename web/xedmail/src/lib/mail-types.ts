@@ -2,7 +2,7 @@ export type Provider = "Gmail";
 
 export type MailboxRecord = {
   id: string;
-  clerkUserId: string;
+  userId: string;
   provider: Provider;
   emailAddress: string;
   image: string | null;
@@ -39,7 +39,7 @@ export type EmailDto = {
 
 export type OAuthState = {
   state: string;
-  clerkUserId: string;
+  userId: string;
   provider: Provider;
   createdAt: number;
 };
