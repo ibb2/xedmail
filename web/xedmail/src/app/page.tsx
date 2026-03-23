@@ -1,6 +1,6 @@
 "use client";
 
-import { useSession } from "@/lib/auth-client";
+import { useSession, signOut } from "@/lib/auth-client";
 import hotkeys from "hotkeys-js";
 import { useRouter } from "next/navigation";
 import React, { useEffect, useMemo, useRef, useState } from "react";
@@ -46,6 +46,7 @@ export default function Home() {
   const searchRef = useRef<HTMLInputElement>(null);
   const [query, setQuery] = useState("");
   const [ran, setRan] = useState(false);
+  const [profileOpen, setProfileOpen] = useState(false);
   const { data: session } = useSession();
 
   const firstName = session?.user?.name?.split(" ")[0] ?? "there";
@@ -167,34 +168,94 @@ export default function Home() {
               margin: "0 4px",
             }}
           />
-          <button
-            type="button"
-            className="flex items-center gap-2 transition-all"
-            style={{ padding: "4px 8px 4px 4px", borderRadius: "0.75rem" }}
-          >
-            <div
-              className="flex items-center justify-center overflow-hidden"
-              style={{
-                width: 28,
-                height: 28,
-                borderRadius: "9999px",
-                background: "rgba(200,128,63,0.2)",
-                border: "1px solid rgba(255,183,123,0.2)",
-                fontSize: 11,
-                fontWeight: 700,
-                color: "#FFB77B",
-                fontFamily: "'Inter', sans-serif",
-              }}
+          <div style={{ position: "relative" }}>
+            <button
+              type="button"
+              className="flex items-center gap-2 transition-all"
+              style={{ padding: "4px 8px 4px 4px", borderRadius: "0.75rem" }}
+              onClick={() => setProfileOpen((o) => !o)}
             >
-              {(session?.user?.name?.[0] ?? "U").toUpperCase()}
-            </div>
-            <span
-              className="material-symbols-outlined"
-              style={{ fontSize: 14, color: "#D8C3B4" }}
-            >
-              expand_more
-            </span>
-          </button>
+              <div
+                className="flex items-center justify-center overflow-hidden"
+                style={{
+                  width: 28,
+                  height: 28,
+                  borderRadius: "9999px",
+                  background: "rgba(200,128,63,0.2)",
+                  border: "1px solid rgba(255,183,123,0.2)",
+                  fontSize: 11,
+                  fontWeight: 700,
+                  color: "#FFB77B",
+                  fontFamily: "'Inter', sans-serif",
+                }}
+              >
+                {(session?.user?.name?.[0] ?? "U").toUpperCase()}
+              </div>
+              <span
+                className="material-symbols-outlined"
+                style={{ fontSize: 14, color: "#D8C3B4" }}
+              >
+                expand_more
+              </span>
+            </button>
+            {profileOpen && (
+              <>
+                <div
+                  style={{ position: "fixed", inset: 0, zIndex: 40 }}
+                  onClick={() => setProfileOpen(false)}
+                />
+                <div
+                  style={{
+                    position: "absolute",
+                    top: "calc(100% + 8px)",
+                    right: 0,
+                    zIndex: 50,
+                    background: "#1C1B1B",
+                    border: "1px solid rgba(82,68,57,0.4)",
+                    borderRadius: "0.75rem",
+                    minWidth: 200,
+                    padding: "4px",
+                    boxShadow: "0 8px 24px rgba(0,0,0,0.4)",
+                  }}
+                >
+                  <div style={{ padding: "8px 12px 6px", borderBottom: "1px solid rgba(82,68,57,0.3)", marginBottom: 4 }}>
+                    <div style={{ fontSize: 13, fontWeight: 600, color: "#E5E2E1" }}>{session?.user?.name}</div>
+                    <div style={{ fontSize: 11, color: "rgba(216,195,180,0.5)" }}>{session?.user?.email}</div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => { setProfileOpen(false); beginOauthFlow(); }}
+                    style={{
+                      display: "flex", alignItems: "center", gap: 8, width: "100%",
+                      padding: "8px 12px", borderRadius: "0.5rem", background: "transparent",
+                      border: "none", color: "#E5E2E1", fontSize: 13, cursor: "pointer",
+                      fontFamily: "'Inter', sans-serif", textAlign: "left",
+                    }}
+                    onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(255,183,123,0.08)")}
+                    onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+                  >
+                    <span className="material-symbols-outlined" style={{ fontSize: 16, color: "#FFB77B" }}>inbox</span>
+                    Connect inbox
+                  </button>
+                  <button
+                    type="button"
+                    onClick={async () => { setProfileOpen(false); await signOut(); router.push("/login"); }}
+                    style={{
+                      display: "flex", alignItems: "center", gap: 8, width: "100%",
+                      padding: "8px 12px", borderRadius: "0.5rem", background: "transparent",
+                      border: "none", color: "rgba(216,195,180,0.6)", fontSize: 13, cursor: "pointer",
+                      fontFamily: "'Inter', sans-serif", textAlign: "left",
+                    }}
+                    onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(255,183,123,0.08)")}
+                    onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+                  >
+                    <span className="material-symbols-outlined" style={{ fontSize: 16 }}>logout</span>
+                    Sign out
+                  </button>
+                </div>
+              </>
+            )}
+          </div>
         </div>
       </header>
 

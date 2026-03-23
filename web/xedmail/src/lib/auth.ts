@@ -4,6 +4,7 @@ import { getDbClient } from "@/lib/db";
 import { LibsqlDialect } from "kysely-libsql";
 import { Kysely } from "kysely";
 import { magicLink } from "better-auth/plugins";
+import { jazzPlugin } from "jazz-tools/better-auth/auth/server";
 
 export const auth = betterAuth({
   database: {
@@ -20,6 +21,7 @@ export const auth = betterAuth({
     },
   },
   plugins: [
+    jazzPlugin(),
     magicLink({
       sendMagicLink: async ({ email, url }) => {
         if (!process.env.RESEND_API_KEY || !process.env.RESEND_FROM_EMAIL) {
