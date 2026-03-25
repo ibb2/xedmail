@@ -215,7 +215,7 @@ export async function AppSidebar({
           user={{
             name: userData?.name ?? "",
             email: userData?.email ?? "",
-            avatar: "",
+            avatar: userData?.image ?? "",
           }}
         />
       </SidebarFooter>
