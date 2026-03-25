@@ -18,6 +18,7 @@ export const auth = betterAuth({
     google: {
       clientId: process.env.GOOGLE_CLIENT_ID!,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
+      overrideUserInfoOnSignIn: true,
     },
   },
   plugins: [
@@ -53,6 +54,27 @@ export const auth = betterAuth({
             });
           } catch (err) {
             console.error("[auth] Failed to upsert user_profiles for", user.id, err);
+          }
+        },
+      },
+      // When an existing user re-signs-in via Google, BetterAuth calls user.update to
+      // refresh their profile. If jazzAuth is in context (injected by the Jazz callback
+      // hook), backfill encryptedCredentials so get-session stops returning 500.
+      update: {
+        before: async (user: Record<string, unknown>, context: Record<string, unknown>) => {
+          if (
+            context &&
+            "jazzAuth" in context &&
+            (context.jazzAuth as any)?.encryptedCredentials
+          ) {
+            const jazzAuth = context.jazzAuth as { accountID: string; encryptedCredentials: string };
+            return {
+              data: {
+                ...user,
+                accountID: jazzAuth.accountID,
+                encryptedCredentials: jazzAuth.encryptedCredentials,
+              },
+            };
           }
         },
       },

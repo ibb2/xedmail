@@ -1,6 +1,5 @@
-// web/xedmail/src/middleware.ts
+// web/xedmail/src/proxy.ts
 import { NextRequest, NextResponse } from "next/server";
-import { auth } from "@/lib/auth";
 
 const PUBLIC_PREFIXES = ["/login", "/api/auth", "/_next/"];
 const STATIC_EXT = /\.(html?|css|js|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest|json)$/;
@@ -14,14 +13,17 @@ function isApiRoute(pathname: string): boolean {
   return pathname.startsWith("/api/") && !pathname.startsWith("/api/auth");
 }
 
-export async function middleware(request: NextRequest) {
+export function proxy(request: NextRequest) {
   const { pathname } = request.nextUrl;
 
   if (isPublic(pathname)) return NextResponse.next();
 
-  const session = await auth.api.getSession({ headers: request.headers });
+  // Importing the full `auth` instance (jazzPlugin + kysely-libsql) is not
+  // Edge-compatible and throws "invalid tag". Check the session cookie instead —
+  // full validation still happens in API routes via api-auth.ts (Node.js runtime).
+  const sessionToken = request.cookies.get("better-auth.session_token");
 
-  if (!session) {
+  if (!sessionToken) {
     if (isApiRoute(pathname)) {
       return NextResponse.json({ error: "UNAUTHORIZED" }, { status: 401 });
     }
