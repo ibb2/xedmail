@@ -1,8 +1,9 @@
-export const runtime = "nodejs";
 import { requireUserId } from "@/lib/api-auth";
 import { getDbClient } from "@/lib/db";
 import { NextResponse } from "next/server";
 import { randomUUID } from "crypto";
+
+export const runtime = "nodejs";
 
 export async function POST(_req: Request, { params }: { params: Promise<{ mailbox: string; uid: string }> }) {
   try {
