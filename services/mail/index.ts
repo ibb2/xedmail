@@ -153,6 +153,95 @@ const app = new Elysia()
     },
   }))
   .get("/health", () => ({ ok: true }))
+  .get("/stream", async ({ request, set }) => {
+    const token = getToken(request);
+    const session = await validateSession(token);
+    if (!session) return new Response("Unauthorized", { status: 401 });
+
+    const url = new URL(request.url);
+    const mailboxAddress = url.searchParams.get("mailbox");
+    const cursor = url.searchParams.get("cursor") ? Number(url.searchParams.get("cursor")) : null;
+    if (!mailboxAddress) return new Response("Missing mailbox", { status: 400 });
+
+    // Verify user owns mailbox
+    const mb = await db.select().from(mailboxes)
+      .where(and(eq(mailboxes.userId, session.userId), eq(mailboxes.emailAddress, mailboxAddress)))
+      .limit(1);
+    if (!mb[0]) return new Response("Forbidden", { status: 403 });
+
+    set.headers["Content-Type"] = "text/event-stream";
+    set.headers["Cache-Control"] = "no-cache";
+    set.headers["Connection"] = "keep-alive";
+
+    const stream = new ReadableStream({
+      async start(controller) {
+        const send = (obj: object) => {
+          controller.enqueue(new TextEncoder().encode(`data: ${JSON.stringify(obj)}\n\n`));
+        };
+
+        const client = new ImapFlow({
+          host: process.env.IMAP_HOST ?? "imap.gmail.com",
+          port: Number(process.env.IMAP_PORT ?? 993),
+          secure: process.env.IMAP_SECURE !== "false",
+          auth: { user: mailboxAddress, accessToken: mb[0].accessToken },
+          logger: false,
+        });
+
+        try {
+          await client.connect();
+          const lock = await client.getMailboxLock("INBOX");
+
+          try {
+            // Build seqToUid map
+            const seqToUid: number[] = [];
+            for await (const msg of client.fetch("1:*", { uid: true })) {
+              seqToUid[msg.seq - 1] = msg.uid;
+            }
+
+            const allUids = seqToUid.filter(Boolean).sort((a, b) => b - a);
+            const startUid = cursor ?? (allUids[0] ?? 0);
+            const watermark = allUids[0] ?? 0;
+
+            // Initial eager batch: latest 500
+            const initialUids = allUids.slice(0, 500);
+            for (let i = 0; i < initialUids.length; i += 50) {
+              const batch = initialUids.slice(i, i + 50);
+              if (!batch.length) break;
+              const uidSet = `${batch[batch.length - 1]}:${batch[0]}`;
+              const emails = await fetchUidRange(client, mailboxAddress, uidSet);
+              send({ type: "batch", emails });
+            }
+
+            // Background backfill: remaining history in batches of 200
+            const remaining = cursor
+              ? allUids.filter(u => u < cursor)
+              : allUids.slice(500);
+
+            for (let i = 0; i < remaining.length; i += 200) {
+              const batch = remaining.slice(i, i + 200);
+              if (!batch.length) break;
+              const uidSet = `${batch[batch.length - 1]}:${batch[0]}`;
+              const emails = await fetchUidRange(client, mailboxAddress, uidSet);
+              send({ type: "batch", emails, cursor: batch[batch.length - 1] });
+              // Yield to event loop between backfill batches
+              await new Promise(r => setTimeout(r, 0));
+            }
+
+            send({ type: "backfill_complete", mailboxId: mailboxAddress, watermarkUid: watermark });
+          } finally {
+            lock.release();
+          }
+        } catch (err) {
+          send({ type: "error", message: String(err) });
+        } finally {
+          client.close();
+          controller.close();
+        }
+      },
+    });
+
+    return new Response(stream, { headers: set.headers as HeadersInit });
+  })
   .listen(PORT);
 
 console.log(`Mail service running on port ${PORT}`);
