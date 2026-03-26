@@ -1,13 +1,13 @@
 "use client";
 
-import React, { useMemo } from "react";
+import React, { Suspense, useMemo } from "react";
 import { useSearchParams } from "next/navigation";
 import InboxClient from "@/components/inbox/inbox-client";
 import { useAllInboxEmails } from "@/hooks/use-inbox";
 import { searchIndex } from "@/lib/search-index";
 import { useSyncReady } from "@/providers/sync-provider";
 
-export default function Inbox() {
+function InboxPage() {
   const syncReady = useSyncReady();
   const emails = useAllInboxEmails();
   const searchParams = useSearchParams();
@@ -28,5 +28,13 @@ export default function Inbox() {
       isLoading={!syncReady && emails.length === 0}
       query={query}
     />
+  );
+}
+
+export default function Inbox() {
+  return (
+    <Suspense>
+      <InboxPage />
+    </Suspense>
   );
 }

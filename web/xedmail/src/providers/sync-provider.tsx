@@ -134,6 +134,7 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
   // Open SSE + WS for each mailbox when session is available
   useEffect(() => {
     if (!token) return;
+    const activeToken: string = token;
     // Issue 1: cancellation flag to guard against cleanup running before connect() resolves
     let cancelled = false;
 
@@ -157,14 +158,12 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
           false,
         );
         if (!complete) {
-          // Issue 6: token is already narrowed above; no need for token! assertion
-          const es = await openSSE(addr, token);
+          const es = await openSSE(addr, activeToken);
           if (cancelled) { es.close(); break; }
           esRefs.current.push(es);
         }
         if (cancelled) break;
-        // Issue 6: token is already narrowed above; no need for token! assertion
-        const ws = openWS(addr, token);
+        const ws = openWS(addr, activeToken);
         wsRefs.current.push(ws);
       }
     }
