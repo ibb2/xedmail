@@ -111,6 +111,99 @@ async function fetchUidRange(
 
 const PORT = Number(process.env.PORT ?? 3001);
 
+// --- IMAP IDLE daemon ---
+async function startIdleConnection(
+  userId: string,
+  mailboxAddress: string,
+  accessToken: string,
+): Promise<ImapConnection> {
+  const client = new ImapFlow({
+    host: process.env.IMAP_HOST ?? "imap.gmail.com",
+    port: Number(process.env.IMAP_PORT ?? 993),
+    secure: process.env.IMAP_SECURE !== "false",
+    auth: { user: mailboxAddress, accessToken },
+    logger: false,
+  });
+
+  const wsClients: Set<{ send: (data: string) => void }> = new Set();
+  const conn: ImapConnection = { client, seqToUid: [], watermarkUid: 0, mailboxAddress, userId, wsClients };
+
+  const broadcast = (obj: object) => {
+    const msg = JSON.stringify(obj);
+    for (const c of wsClients) c.send(msg);
+  };
+
+  const reconnect = async (delayMs = 1000) => {
+    broadcast({ type: "reconnecting", mailboxId: mailboxAddress });
+    await new Promise(r => setTimeout(r, Math.min(delayMs, 60_000)));
+    try {
+      await client.connect();
+      await initIdle(conn, broadcast, reconnect);
+    } catch {
+      reconnect(delayMs * 2);
+    }
+  };
+
+  await client.connect();
+  await initIdle(conn, broadcast, reconnect);
+
+  return conn;
+}
+
+async function initIdle(
+  conn: ImapConnection,
+  broadcast: (obj: object) => void,
+  reconnect: (delay?: number) => void,
+) {
+  const { client, mailboxAddress } = conn;
+
+  client.on("error", () => reconnect());
+  client.on("close", () => reconnect());
+
+  const lock = await client.getMailboxLock("INBOX");
+  conn.seqToUid = [];
+  for await (const msg of client.fetch("1:*", { uid: true })) {
+    conn.seqToUid[msg.seq - 1] = msg.uid;
+  }
+  conn.watermarkUid = Math.max(0, ...conn.seqToUid.filter(Boolean));
+  lock.release();
+
+  client.on("exists", async ({ count }: { count: number }) => {
+    if (count <= conn.seqToUid.length) return;
+    // Fetch new messages since watermark
+    const lock2 = await client.getMailboxLock("INBOX");
+    try {
+      const emails = await fetchUidRange(client, mailboxAddress, `${conn.watermarkUid + 1}:*`);
+      for (const e of emails) {
+        conn.seqToUid.push(e.uid);
+        if (e.uid > conn.watermarkUid) conn.watermarkUid = e.uid;
+      }
+      if (emails.length) broadcast({ type: "exists", emails });
+    } finally { lock2.release(); }
+  });
+
+  client.on("expunge", ({ seq }: { seq: number }) => {
+    const uid = conn.seqToUid[seq - 1];
+    if (uid) {
+      conn.seqToUid.splice(seq - 1, 1);
+      broadcast({ type: "expunge", id: `${mailboxAddress}:${uid}` });
+    }
+  });
+
+  client.on("flags", async ({ uid, flags }: { uid: number; flags: Set<string> }) => {
+    broadcast({
+      type: "flags",
+      id: `${mailboxAddress}:${uid}`,
+      isRead: flags.has("\\Seen"),
+      isStarred: flags.has("\\Flagged"),
+    });
+  });
+
+  // Start IDLE
+  await client.idle();
+  broadcast({ type: "reconnected", mailboxId: mailboxAddress });
+}
+
 // --- Auth ---
 async function validateSession(token: string | undefined): Promise<{ userId: string } | null> {
   if (!token) return null;
@@ -240,6 +333,43 @@ const app = new Elysia()
     });
 
     return new Response(stream, { headers: set.headers as HeadersInit });
+  })
+  .ws("/events", {
+    async open(ws) {
+      // token passed as query param on upgrade
+      const req = (ws as any).data?.request as Request | undefined;
+      const token = req ? getToken(req) : undefined;
+      const session = await validateSession(token);
+      if (!session) { ws.close(4001, "Unauthorized"); return; }
+
+      const url = req ? new URL(req.url) : null;
+      const mailboxAddress = url?.searchParams.get("mailbox");
+      if (!mailboxAddress) { ws.close(4000, "Missing mailbox"); return; }
+
+      const mb = await db.select().from(mailboxes)
+        .where(and(eq(mailboxes.userId, session.userId), eq(mailboxes.emailAddress, mailboxAddress)))
+        .limit(1);
+      if (!mb[0]) { ws.close(4003, "Forbidden"); return; }
+
+      const connKey = `${session.userId}:${mailboxAddress}`;
+      let conn = connections.get(connKey);
+
+      if (!conn) {
+        conn = await startIdleConnection(session.userId, mailboxAddress, mb[0].accessToken);
+        connections.set(connKey, conn);
+      }
+
+      conn.wsClients.add(ws);
+
+      (ws as any)._connKey = connKey;
+    },
+    close(ws) {
+      const connKey = (ws as any)._connKey as string | undefined;
+      if (connKey) {
+        connections.get(connKey)?.wsClients.delete(ws);
+      }
+    },
+    message() {},
   })
   .listen(PORT);
 
