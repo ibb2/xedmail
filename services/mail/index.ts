@@ -22,7 +22,40 @@ const db = getDb();
 
 const PORT = Number(process.env.PORT ?? 3001);
 
+// --- Auth ---
+async function validateSession(token: string | undefined): Promise<{ userId: string } | null> {
+  if (!token) return null;
+  const rows = await db.select({
+    userId: sessionTable.userId,
+    expiresAt: sessionTable.expiresAt,
+  })
+    .from(sessionTable)
+    .where(eq(sessionTable.token, token))
+    .limit(1);
+  const row = rows[0];
+  if (!row || row.expiresAt < new Date()) return null;
+  return { userId: row.userId };
+}
+
+function getToken(req: Request): string | undefined {
+  const url = new URL(req.url);
+  return (
+    url.searchParams.get("token") ??
+    req.headers.get("authorization")?.replace("Bearer ", "") ??
+    undefined
+  );
+}
+
+const CORS_ORIGIN = process.env.CORS_ORIGIN ?? "http://localhost:3000";
+const SERVICE_SECRET = process.env.ELYSIA_SERVICE_SECRET ?? "";
+
 const app = new Elysia()
+  .onBeforeHandle(({ set }) => {
+    set.headers["Access-Control-Allow-Origin"] = CORS_ORIGIN;
+    set.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization";
+    set.headers["Access-Control-Allow-Methods"] = "GET, OPTIONS";
+  })
+  .options("/*", () => new Response(null, { status: 204 }))
   .get("/health", () => ({ ok: true }))
   .listen(PORT);
 
