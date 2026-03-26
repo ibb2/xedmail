@@ -13,6 +13,12 @@ import type { EmailMetadata } from "@/lib/dexie";
 const ELYSIA_URL =
   process.env.NEXT_PUBLIC_ELYSIA_SERVICE_URL ?? "http://localhost:3001";
 
+// Issue 5: idleCallback polyfill at module scope (not redeclared per message)
+const idleCallback: (fn: () => void) => void =
+  typeof requestIdleCallback !== "undefined"
+    ? (fn) => requestIdleCallback(fn)
+    : (fn) => setTimeout(fn, 0);
+
 type SyncContextValue = { isReady: boolean };
 const SyncContext = createContext<SyncContextValue>({ isReady: false });
 
@@ -38,11 +44,6 @@ async function openSSE(mailboxAddress: string, token: string) {
       const msg = JSON.parse(e.data);
 
       if (msg.type === "batch") {
-        const idleCallback: (fn: () => void) => void =
-          typeof requestIdleCallback !== "undefined"
-            ? (fn) => requestIdleCallback(fn)
-            : (fn) => setTimeout(fn, 0);
-
         idleCallback(() => {
           (async () => {
             await writeBatch(msg.emails);
@@ -52,7 +53,7 @@ async function openSSE(mailboxAddress: string, token: string) {
                 msg.cursor,
               );
             }
-            // Update watermark from first batch
+            // Update high-water mark UID
             const maxUid = Math.max(
               0,
               ...msg.emails.map((e: EmailMetadata) => e.uid),
@@ -75,7 +76,12 @@ async function openSSE(mailboxAddress: string, token: string) {
     })().catch(console.error);
   };
 
-  es.onerror = () => es.close();
+  // Issue 3: Let EventSource auto-reconnect on transient errors; only no-op if already closed
+  es.onerror = () => {
+    if (es.readyState === EventSource.CLOSED) return; // already closed, nothing to do
+    // For truly unrecoverable errors, EventSource will close itself
+  };
+
   return es;
 }
 
@@ -128,24 +134,37 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
   // Open SSE + WS for each mailbox when session is available
   useEffect(() => {
     if (!token) return;
+    // Issue 1: cancellation flag to guard against cleanup running before connect() resolves
+    let cancelled = false;
 
     async function connect() {
-      const mboxes = await fetch("/api/mail/mailboxes").then((r) => r.json());
+      // Issue 2: error handling for mailboxes fetch
+      const r = await fetch("/api/mail/mailboxes");
+      if (!r.ok) {
+        console.error("[SyncProvider] failed to fetch mailboxes:", r.status);
+        return;
+      }
+      const mboxes = await r.json();
       const addresses: string[] = mboxes.map(
         (m: { emailAddress: string }) => m.emailAddress,
       );
 
       for (const addr of addresses) {
+        if (cancelled) break;
         // Re-open SSE if not complete
         const complete = await getSyncState<boolean>(
           `backfillComplete_${addr}`,
           false,
         );
         if (!complete) {
-          const es = await openSSE(addr, token!);
+          // Issue 6: token is already narrowed above; no need for token! assertion
+          const es = await openSSE(addr, token);
+          if (cancelled) { es.close(); break; }
           esRefs.current.push(es);
         }
-        const ws = openWS(addr, token!);
+        if (cancelled) break;
+        // Issue 6: token is already narrowed above; no need for token! assertion
+        const ws = openWS(addr, token);
         wsRefs.current.push(ws);
       }
     }
@@ -153,6 +172,7 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
     connect().catch(console.error);
 
     return () => {
+      cancelled = true;
       esRefs.current.forEach((es) => es.close());
       wsRefs.current.forEach((ws) => ws.close());
       esRefs.current = [];
