@@ -1,4 +1,5 @@
 import { Elysia } from "elysia";
+import { ImapFlow } from "imapflow";
 import { drizzle } from "drizzle-orm/libsql";
 import { createClient } from "@libsql/client";
 import { eq, and } from "drizzle-orm"; // used in auth + route handlers
@@ -19,6 +20,91 @@ function getDb() {
 }
 
 const db = getDb();
+
+// --- IMAP types ---
+type EmailMetadata = {
+  id: string;
+  mailboxId: string;
+  uid: number;
+  threadId: string;
+  subject: string;
+  fromName: string;
+  fromAddress: string;
+  date: number;
+  snippet: string;
+  isRead: boolean;
+  isStarred: boolean;
+  labels: string[];
+  hasAttachments: boolean;
+};
+
+type ImapConnection = {
+  client: ImapFlow;
+  seqToUid: number[];
+  watermarkUid: number;
+  mailboxAddress: string;
+  userId: string;
+  wsClients: Set<{ send: (data: string) => void }>;
+};
+
+const connections = new Map<string, ImapConnection>(); // key: `${userId}:${mailboxAddress}`
+
+// --- IMAP helpers ---
+function extractSnippet(text: string, maxLen = 200): string {
+  return text.replace(/<[^>]+>/g, " ").replace(/\s+/g, " ").trim().slice(0, maxLen);
+}
+
+function hasAttachmentParts(structure: any): boolean {
+  if (!structure) return false;
+  if (structure.disposition?.type?.toLowerCase() === "attachment") return true;
+  if (Array.isArray(structure.childNodes)) {
+    return structure.childNodes.some(hasAttachmentParts);
+  }
+  return false;
+}
+
+function messageToMetadata(msg: any, mailboxAddress: string): EmailMetadata {
+  const env = msg.envelope ?? {};
+  const from = env.from?.[0] ?? {};
+  return {
+    id: `${mailboxAddress}:${msg.uid}`,
+    mailboxId: mailboxAddress,
+    uid: msg.uid,
+    threadId: String(msg.gmailThreadId ?? ""),
+    subject: env.subject ?? "(No Subject)",
+    fromName: from.name ?? "Unknown",
+    fromAddress: from.address ?? "unknown",
+    date: msg.internalDate ? new Date(msg.internalDate).getTime() : Date.now(),
+    snippet: extractSnippet(msg.bodyPart ?? ""),
+    isRead: msg.flags?.has("\\Seen") ?? false,
+    isStarred: msg.flags?.has("\\Flagged") ?? false,
+    labels: Array.isArray(msg.gmailLabels) ? [...msg.gmailLabels] : [],
+    hasAttachments: hasAttachmentParts(msg.bodyStructure),
+  };
+}
+
+async function fetchUidRange(
+  client: ImapFlow,
+  mailboxAddress: string,
+  uidSet: string, // e.g. "1:500" or "1234:*"
+): Promise<EmailMetadata[]> {
+  const results: EmailMetadata[] = [];
+  for await (const msg of client.fetch(uidSet, {
+    uid: true,
+    envelope: true,
+    flags: true,
+    bodyStructure: true,
+    internalDate: true,
+    // Gmail extensions — silently ignored for non-Gmail
+    // @ts-ignore
+    "X-GM-THRID": true,
+    // @ts-ignore
+    "X-GM-LABELS": true,
+  }, { uid: true })) {
+    results.push(messageToMetadata(msg, mailboxAddress));
+  }
+  return results;
+}
 
 const PORT = Number(process.env.PORT ?? 3001);
 
