@@ -7,39 +7,24 @@ import hotkeys from "hotkeys-js";
 import { useRouter } from "next/navigation";
 import React, { useMemo, useState } from "react";
 import { SmartSearchBar } from "@/components/ui/smart-search-bar";
-import { extractContacts } from "@/lib/contacts";
-import { useJazzInboxState } from "@/providers/jazz-provider";
+import type { EmailMetadata } from "@/lib/dexie";
 
-interface Email {
-  id: string;
-  uid: string;
-  mailboxAddress: string;
-  messageId?: string;
-  subject: string;
-  from: [string, string];
-  to: string;
-  body?: string;
-  date: string;
-  isRead: boolean;
-  isNew?: boolean;
-  snoozedUntil?: string;
-  isArchived?: boolean;
+type Email = EmailMetadata & { body?: string };
+
+function getEmailKey(email: Pick<Email, "mailboxId" | "uid">) {
+  return `${email.mailboxId}:${email.uid}`;
 }
 
-function getEmailKey(email: Pick<Email, "mailboxAddress" | "uid">) {
-  return `${email.mailboxAddress}:${email.uid}`;
-}
-
-function formatDate(dateStr: string) {
-  const d = new Date(dateStr);
+function formatDate(dateMs: number) {
+  const d = new Date(dateMs);
   const now = new Date();
   if (d.toDateString() === now.toDateString())
     return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   return d.toLocaleDateString([], { month: "short", day: "numeric" });
 }
 
-function formatFullDate(dateStr: string) {
-  const d = new Date(dateStr);
+function formatFullDate(dateMs: number) {
+  const d = new Date(dateMs);
   return (
     d.toLocaleDateString([], {
       day: "numeric",
@@ -257,7 +242,7 @@ function EmailReader({
               }}
             >
               {emailIndex > 0
-                ? emails[emailIndex - 1].from[0] ||
+                ? emails[emailIndex - 1].fromName ||
                   emails[emailIndex - 1].subject
                 : "—"}
             </span>
@@ -305,7 +290,7 @@ function EmailReader({
               }}
             >
               {emailIndex < emails.length - 1
-                ? emails[emailIndex + 1].from[0] ||
+                ? emails[emailIndex + 1].fromName ||
                   emails[emailIndex + 1].subject
                 : "—"}
             </span>
@@ -367,8 +352,8 @@ function EmailReader({
                   color: "#D8C3B4",
                 }}
               >
-                ID: {email.uid.slice(0, 3).toUpperCase()}-XO-
-                {email.uid.slice(-2).toUpperCase()}
+                ID: {String(email.uid).slice(0, 3).toUpperCase()}-XO-
+                {String(email.uid).slice(-2).toUpperCase()}
               </span>
             </div>
           </div>
@@ -428,19 +413,19 @@ function EmailReader({
                     fontFamily: "'Inter', sans-serif",
                   }}
                 >
-                  {getInitials(email.from[0] || email.from[1] || "?")}
+                  {getInitials(email.fromName || email.fromAddress || "?")}
                 </div>
                 <div>
                   <p
                     style={{ fontSize: 14, fontWeight: 500, color: "#E5E2E1" }}
                   >
-                    {email.from[0] || email.from[1]}{" "}
+                    {email.fromName || email.fromAddress}{" "}
                     <span style={{ color: "#D8C3B4", fontWeight: 400 }}>
-                      &lt;{email.from[1]}&gt;
+                      &lt;{email.fromAddress}&gt;
                     </span>
                   </p>
                   <p style={{ fontSize: 12, color: "#D8C3B4", marginTop: 2 }}>
-                    to {email.to || "me"}
+                    to me
                   </p>
                 </div>
               </div>
@@ -535,60 +520,39 @@ export default function InboxClient({
   const [isReaderOpen, setIsReaderOpen] = useState(false);
   const [activeTab, setActiveTab] = useState<(typeof TABS)[number]>("Focused");
   const [localQuery, setLocalQuery] = useState(query);
-  const contacts = useMemo(() => extractContacts(emails), [emails]);
-  const {
-    updateMessageReadStatus,
-    clearMessageNewStatus,
-    archiveMessage,
-    snoozeMessage,
-    senderRules,
-    allowSender,
-    blockSender,
-    addRecentSearch,
-  } = useJazzInboxState();
+  const contacts = useMemo(
+    () =>
+      emails.map((e) => ({ name: e.fromName, address: e.fromAddress })).filter(
+        (c, i, arr) => c.address !== "unknown" && arr.findIndex((x) => x.address === c.address) === i,
+      ),
+    [emails],
+  );
   const { data: session } = useSession();
   const router = useRouter();
 
   const sortedEmails = useMemo(
-    () => [...emails].sort((a, b) => Date.parse(b.date) - Date.parse(a.date)),
+    () => [...emails].sort((a, b) => b.date - a.date),
     [emails],
   );
 
-  const blockedAddresses = React.useMemo(
-    () =>
-      new Set(
-        senderRules.filter((r) => r.rule === "block").map((r) => r.address),
-      ),
-    [senderRules],
-  );
-
   const filteredEmails = useMemo(() => {
-    const now = new Date();
-    let result = sortedEmails.filter((e) => {
-      if (e.isArchived) return false;
-      if (e.snoozedUntil && new Date(e.snoozedUntil) > now) return false;
-      if (blockedAddresses.has(e.from[1])) return false;
-      return true;
-    });
+    let result = sortedEmails;
     if (activeTab === "Unread") result = result.filter((e) => !e.isRead);
+    if (activeTab === "Starred") result = result.filter((e) => e.isStarred);
     return result;
-  }, [sortedEmails, activeTab, blockedAddresses]);
+  }, [sortedEmails, activeTab]);
 
   const gatekeeperCandidates = useMemo(() => {
-    const ruledAddresses = new Set(senderRules.map((r) => r.address));
     const addressCount = new Map<string, number>();
     for (const email of sortedEmails) {
-      const addr = email.from[1];
+      const addr = email.fromAddress;
       addressCount.set(addr, (addressCount.get(addr) ?? 0) + 1);
     }
     return sortedEmails
-      .filter(
-        (e) =>
-          addressCount.get(e.from[1]) === 1 && !ruledAddresses.has(e.from[1]),
-      )
-      .sort((a, b) => Date.parse(b.date) - Date.parse(a.date))
+      .filter((e) => addressCount.get(e.fromAddress) === 1)
+      .sort((a, b) => b.date - a.date)
       .slice(0, 3);
-  }, [sortedEmails, senderRules]);
+  }, [sortedEmails]);
 
   const unreadCount = sortedEmails.filter((e) => !e.isRead).length;
 
@@ -617,7 +581,7 @@ export default function InboxClient({
   const toggleRead = async (email: Email) => {
     if (!email) return;
     await fetch(
-      `/api/mail/emails/mailbox/${encodeURIComponent(email.mailboxAddress)}/${email.uid}?isRead=${email.isRead}`,
+      `/api/mail/emails/mailbox/${encodeURIComponent(email.mailboxId)}/${email.uid}?isRead=${email.isRead}`,
       {
         method: "PATCH",
         headers: {
@@ -625,20 +589,7 @@ export default function InboxClient({
         },
       },
     );
-    const updatedEmail = {
-      ...email,
-      isRead: !email.isRead,
-      isNew: email.isRead ? email.isNew : false,
-    };
-    updateMessageReadStatus(
-      { uid: email.uid, mailboxAddress: email.mailboxAddress },
-      updatedEmail.isRead,
-    );
-    if (!email.isRead)
-      clearMessageNewStatus({
-        uid: email.uid,
-        mailboxAddress: email.mailboxAddress,
-      });
+    const updatedEmail = { ...email, isRead: !email.isRead };
     if (selectedEmail && getEmailKey(selectedEmail) === getEmailKey(email)) {
       setSelectedEmail(updatedEmail);
     }
@@ -646,7 +597,7 @@ export default function InboxClient({
 
   const fetchBody = async (email: Email) => {
     const response = await fetch(
-      `/api/mail/emails/${email.uid}?mailbox=${encodeURIComponent(email.mailboxAddress)}`,
+      `/api/mail/emails/${email.uid}?mailbox=${encodeURIComponent(email.mailboxId)}`,
       {},
     );
     if (!response.ok) return "";
@@ -657,17 +608,13 @@ export default function InboxClient({
   };
 
   const openEmail = async (email: Email, index?: number) => {
-    setSelectedEmail({ ...email, isNew: false });
+    setSelectedEmail(email);
     setSelectedEmailIndex(
       index ??
         filteredEmails.findIndex((e) => getEmailKey(e) === getEmailKey(email)),
     );
     setBody("");
     setIsReaderOpen(true);
-    clearMessageNewStatus({
-      uid: email.uid,
-      mailboxAddress: email.mailboxAddress,
-    });
     await fetchBody(email);
   };
 
@@ -680,23 +627,13 @@ export default function InboxClient({
     const target = isReaderOpen ? selectedEmail : focusedEmail;
     if (!target) return;
     const response = await fetch(
-      `/api/mail/emails/mailbox/${encodeURIComponent(target.mailboxAddress)}/${target.uid}/archive`,
+      `/api/mail/emails/mailbox/${encodeURIComponent(target.mailboxId)}/${target.uid}/archive`,
       { method: "POST" },
     );
     if (response.ok) {
-      archiveMessage({
-        uid: target.uid,
-        mailboxAddress: target.mailboxAddress,
-      });
       if (isReaderOpen) closeReader();
     }
-  }, [
-    selectedEmail,
-    focusedEmail,
-    isReaderOpen,
-    archiveMessage,
-    closeReader,
-  ]);
+  }, [selectedEmail, focusedEmail, isReaderOpen, closeReader]);
 
   const [isComposeOpen, setIsComposeOpen] = useState(false);
   const [composeMailbox, setComposeMailbox] = useState("");
@@ -729,12 +666,16 @@ export default function InboxClient({
     return d;
   }
 
-  const handleSnooze = (until: Date) => {
+  const handleSnooze = async (until: Date) => {
     const target = isReaderOpen ? selectedEmail : focusedEmail;
     if (!target) return;
-    snoozeMessage(
-      { uid: target.uid, mailboxAddress: target.mailboxAddress },
-      until.toISOString(),
+    await fetch(
+      `/api/mail/emails/mailbox/${encodeURIComponent(target.mailboxId)}/${target.uid}/snooze`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ until: until.toISOString() }),
+      },
     );
     setIsSnoozeOpen(false);
     if (isReaderOpen) closeReader();
@@ -743,14 +684,14 @@ export default function InboxClient({
   const openReply = React.useCallback(() => {
     const target = isReaderOpen ? selectedEmail : focusedEmail;
     if (!target) return;
-    setComposeMailbox(target.mailboxAddress);
-    setComposeTo(target.from[1]);
+    setComposeMailbox(target.mailboxId);
+    setComposeTo(target.fromAddress);
     const subject = target.subject.startsWith("Re:")
       ? target.subject
       : `Re: ${target.subject}`;
     setComposeSubject(subject);
     setComposeBody(isReaderOpen ? `\n\n---\n${body}` : "");
-    setComposeReplyTo(target.messageId);
+    setComposeReplyTo(undefined);
     setComposeError(null);
     setComposeReturnToInbox(!isReaderOpen);
     if (isReaderOpen) closeReader();
@@ -946,7 +887,6 @@ export default function InboxClient({
               value={localQuery}
               onChange={setLocalQuery}
               onSubmit={(val) => {
-                if (val) addRecentSearch(val);
                 router.push(
                   val ? `/inbox?query=${encodeURIComponent(val)}` : "/inbox",
                 );
@@ -1131,7 +1071,7 @@ export default function InboxClient({
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 {gatekeeperCandidates.map((email) => (
                   <div
-                    key={`${email.mailboxAddress}:${email.uid}`}
+                    key={`${email.mailboxId}:${email.uid}`}
                     className="group flex flex-col gap-3 transition-all"
                     style={{
                       background: "#1C1B1B",
@@ -1154,8 +1094,8 @@ export default function InboxClient({
                         }}
                       >
                         {(
-                          email.from[0]?.[0] ??
-                          email.from[1]?.[0] ??
+                          email.fromName?.[0] ??
+                          email.fromAddress?.[0] ??
                           "?"
                         ).toUpperCase()}
                       </div>
@@ -1167,7 +1107,7 @@ export default function InboxClient({
                             color: "#E5E2E1",
                           }}
                         >
-                          {email.from[0] || email.from[1]}
+                          {email.fromName || email.fromAddress}
                         </h3>
                         <span
                           style={{
@@ -1178,7 +1118,7 @@ export default function InboxClient({
                             textTransform: "uppercase",
                           }}
                         >
-                          {email.from[1]}
+                          {email.fromAddress}
                         </span>
                       </div>
                     </div>
@@ -1195,7 +1135,7 @@ export default function InboxClient({
                     <div className="flex gap-4 mt-1 opacity-0 group-hover:opacity-100 transition-opacity">
                       <button
                         type="button"
-                        onClick={() => allowSender(email.from[1])}
+                        onClick={() => {/* sender rules coming soon */}}
                         className="hover:underline"
                         style={{
                           fontFamily: "'JetBrains Mono', monospace",
@@ -1209,7 +1149,7 @@ export default function InboxClient({
                       </button>
                       <button
                         type="button"
-                        onClick={() => blockSender(email.from[1])}
+                        onClick={() => {/* sender rules coming soon */}}
                         className="hover:opacity-70"
                         style={{
                           fontFamily: "'JetBrains Mono', monospace",
@@ -1413,7 +1353,7 @@ export default function InboxClient({
                           color: isUnread ? "#E5E2E1" : "#D8C3B4",
                         }}
                       >
-                        {email.from[0] || email.from[1]}
+                        {email.fromName || email.fromAddress}
                       </div>
 
                       {/* Subject + snippet */}
