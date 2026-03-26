@@ -111,6 +111,28 @@ async function fetchUidRange(
 
 const PORT = Number(process.env.PORT ?? 3001);
 
+// --- Attachment helpers ---
+type AttachmentManifest = { partId: string; filename: string; size: number; mimeType: string };
+
+function extractAttachmentManifest(structure: any, path = ""): AttachmentManifest[] {
+  if (!structure) return [];
+  const results: AttachmentManifest[] = [];
+  if (structure.disposition?.type?.toLowerCase() === "attachment") {
+    results.push({
+      partId: path || "1",
+      filename: structure.disposition.parameters?.filename ?? "attachment",
+      size: structure.size ?? 0,
+      mimeType: `${structure.type}/${structure.subtype}`.toLowerCase(),
+    });
+  }
+  if (Array.isArray(structure.childNodes)) {
+    structure.childNodes.forEach((child: any, i: number) => {
+      results.push(...extractAttachmentManifest(child, path ? `${path}.${i + 1}` : String(i + 1)));
+    });
+  }
+  return results;
+}
+
 // --- IMAP IDLE daemon ---
 async function startIdleConnection(
   userId: string,
@@ -385,6 +407,113 @@ const app = new Elysia()
       }
     },
     message() {},
+  })
+  .get("/body/:emailId", async ({ params, request }) => {
+    const secret = request.headers.get("x-service-secret");
+    if (secret !== SERVICE_SECRET) return new Response("Forbidden", { status: 403 });
+
+    const lastColon = params.emailId.lastIndexOf(":");
+    const mailboxAddress = params.emailId.slice(0, lastColon);
+    const uid = Number(params.emailId.slice(lastColon + 1));
+
+    const mb = await db.select().from(mailboxes)
+      .where(eq(mailboxes.emailAddress, mailboxAddress)).limit(1);
+    if (!mb[0]) return new Response("Not found", { status: 404 });
+
+    const client = new ImapFlow({
+      host: process.env.IMAP_HOST ?? "imap.gmail.com",
+      port: Number(process.env.IMAP_PORT ?? 993),
+      secure: process.env.IMAP_SECURE !== "false",
+      auth: { user: mailboxAddress, accessToken: mb[0].accessToken },
+      logger: false,
+    });
+
+    await client.connect();
+    const lock = await client.getMailboxLock("INBOX");
+    try {
+      const msg = await client.fetchOne(String(uid), { bodyStructure: true, source: true }, { uid: true });
+      if (!msg) return new Response("Not found", { status: 404 });
+
+      const body = msg.source?.toString("utf-8") ?? "";
+      const attachments = extractAttachmentManifest(msg.bodyStructure);
+      return Response.json({ body, attachments });
+    } finally {
+      lock.release();
+      client.close();
+    }
+  })
+  .get("/attachments/:emailId/:partId", async ({ params, request }) => {
+    const secret = request.headers.get("x-service-secret");
+    if (secret !== SERVICE_SECRET) return new Response("Forbidden", { status: 403 });
+
+    const lastColon = params.emailId.lastIndexOf(":");
+    const mailboxAddress = params.emailId.slice(0, lastColon);
+    const uid = Number(params.emailId.slice(lastColon + 1));
+
+    const mb = await db.select().from(mailboxes)
+      .where(eq(mailboxes.emailAddress, mailboxAddress)).limit(1);
+    if (!mb[0]) return new Response("Not found", { status: 404 });
+
+    const client = new ImapFlow({
+      host: process.env.IMAP_HOST ?? "imap.gmail.com",
+      port: Number(process.env.IMAP_PORT ?? 993),
+      secure: process.env.IMAP_SECURE !== "false",
+      auth: { user: mailboxAddress, accessToken: mb[0].accessToken },
+      logger: false,
+    });
+
+    await client.connect();
+    const lock = await client.getMailboxLock("INBOX");
+    const download = await client.download(String(uid), params.partId, { uid: true });
+    lock.release();
+    // Stream directly — client.close() called after stream finishes
+    const nodeStream = download.content;
+    const webStream = new ReadableStream({
+      start(controller) {
+        nodeStream.on("data", (chunk: Buffer) => controller.enqueue(chunk));
+        nodeStream.on("end", () => { controller.close(); client.close(); });
+        nodeStream.on("error", (err) => { controller.error(err); client.close(); });
+      },
+    });
+    return new Response(webStream, {
+      headers: {
+        "Content-Type": download.type ?? "application/octet-stream",
+        "Content-Disposition": `attachment; filename="${download.disposition?.parameters?.filename ?? "file"}"`,
+      },
+    });
+  })
+  .get("/search", async ({ request }) => {
+    const secret = request.headers.get("x-service-secret");
+    if (secret !== SERVICE_SECRET) return new Response("Forbidden", { status: 403 });
+
+    const url = new URL(request.url);
+    const mailboxAddress = url.searchParams.get("mailbox") ?? "";
+    const q = url.searchParams.get("q") ?? "";
+
+    const mb = await db.select().from(mailboxes)
+      .where(eq(mailboxes.emailAddress, mailboxAddress)).limit(1);
+    if (!mb[0]) return Response.json({ emails: [] });
+
+    const client = new ImapFlow({
+      host: process.env.IMAP_HOST ?? "imap.gmail.com",
+      port: Number(process.env.IMAP_PORT ?? 993),
+      secure: process.env.IMAP_SECURE !== "false",
+      auth: { user: mailboxAddress, accessToken: mb[0].accessToken },
+      logger: false,
+    });
+
+    await client.connect();
+    const lock = await client.getMailboxLock("INBOX");
+    try {
+      const uids = await client.search({ text: q }, { uid: true });
+      const emails = uids.length
+        ? await fetchUidRange(client, mailboxAddress, uids.join(","))
+        : [];
+      return Response.json({ emails });
+    } finally {
+      lock.release();
+      client.close();
+    }
   })
   .listen(PORT);
 
