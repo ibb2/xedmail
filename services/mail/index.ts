@@ -41,7 +41,7 @@ function getToken(req: Request): string | undefined {
   const url = new URL(req.url);
   return (
     url.searchParams.get("token") ??
-    req.headers.get("authorization")?.replace("Bearer ", "") ??
+    req.headers.get("authorization")?.replace(/^Bearer /, "") ??
     undefined
   );
 }
@@ -55,7 +55,14 @@ const app = new Elysia()
     set.headers["Access-Control-Allow-Headers"] = "Content-Type, Authorization";
     set.headers["Access-Control-Allow-Methods"] = "GET, OPTIONS";
   })
-  .options("/*", () => new Response(null, { status: 204 }))
+  .options("/*", () => new Response(null, {
+    status: 204,
+    headers: {
+      "Access-Control-Allow-Origin": CORS_ORIGIN,
+      "Access-Control-Allow-Headers": "Content-Type, Authorization",
+      "Access-Control-Allow-Methods": "GET, OPTIONS",
+    },
+  }))
   .get("/health", () => ({ ok: true }))
   .listen(PORT);
 
