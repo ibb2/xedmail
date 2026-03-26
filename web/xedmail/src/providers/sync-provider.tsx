@@ -130,13 +130,17 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
   useEffect(() => {
     async function init() {
       // Evict stale bodies (>30 days)
-      const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
-      const stale = await db.bodies.where("lastAccessed").below(thirtyDaysAgo).toArray();
-      if (stale.length) {
-        const freedBytes = stale.reduce((sum, b) => sum + b.byteSize, 0);
-        await db.bodies.bulkDelete(stale.map(b => b.id));
-        const prev = await getSyncState<number>("totalBodyBytes", 0);
-        await setSyncState("totalBodyBytes", Math.max(0, prev - freedBytes));
+      try {
+        const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
+        const stale = await db.bodies.where("lastAccessed").below(thirtyDaysAgo).toArray();
+        if (stale.length) {
+          const freedBytes = stale.reduce((sum, b) => sum + b.byteSize, 0);
+          await db.bodies.bulkDelete(stale.map(b => b.id));
+          const prev = await getSyncState<number>("totalBodyBytes", 0);
+          await setSyncState("totalBodyBytes", Math.max(0, prev - freedBytes));
+        }
+      } catch (err) {
+        console.error("[SyncProvider] body eviction failed:", err);
       }
 
       await rehydrateIndex();

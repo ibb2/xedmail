@@ -1,12 +1,14 @@
-export const runtime = "nodejs";
 import { NextResponse } from "next/server";
 import { requireUserId } from "@/lib/api-auth";
 import { getValidMailboxesForUser } from "@/lib/mail-auth";
+
+export const runtime = "nodejs";
 
 const ELYSIA_URL = process.env.ELYSIA_SERVICE_URL!;
 const SERVICE_SECRET = process.env.ELYSIA_SERVICE_SECRET!;
 
 if (!ELYSIA_URL) throw new Error("ELYSIA_SERVICE_URL is not set");
+if (!SERVICE_SECRET) throw new Error("ELYSIA_SERVICE_SECRET is not set");
 
 export async function GET(request: Request) {
   try {
