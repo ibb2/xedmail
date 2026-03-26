@@ -75,7 +75,9 @@ function messageToMetadata(msg: any, mailboxAddress: string): EmailMetadata {
     fromName: from.name ?? "Unknown",
     fromAddress: from.address ?? "unknown",
     date: msg.internalDate ? new Date(msg.internalDate).getTime() : Date.now(),
-    snippet: extractSnippet(msg.bodyPart ?? ""),
+    snippet: extractSnippet(typeof msg.bodyPart === "string"
+      ? msg.bodyPart
+      : msg.bodyPart?.toString() ?? ""),
     isRead: msg.flags?.has("\\Seen") ?? false,
     isStarred: msg.flags?.has("\\Flagged") ?? false,
     labels: Array.isArray(msg.gmailLabels) ? [...msg.gmailLabels] : [],
@@ -95,6 +97,7 @@ async function fetchUidRange(
     flags: true,
     bodyStructure: true,
     internalDate: true,
+    bodyPart: "TEXT",
     // Gmail extensions — silently ignored for non-Gmail
     // @ts-ignore
     "X-GM-THRID": true,
