@@ -65,7 +65,7 @@ Turso / libsql
 
 The entire Elysia service lives in `services/mail/index.ts`. All concerns — route definitions, IMAP IDLE daemon, reconnection logic, `seqToUid` map maintenance, BetterAuth session validation, and CORS — are implemented in this one file. No subdirectories, no module splitting.
 
-`services/mail/package.json` declares runtime dependencies only: `elysia`, `imapflow`, `@libsql/client`, `better-auth`.
+`services/mail/package.json` declares runtime dependencies only: `elysia`, `imapflow`, `@libsql/client`, `drizzle-orm`. Dev dependency: `drizzle-kit` (for migrations).
 
 ---
 
@@ -77,11 +77,14 @@ The browser connects to Elysia directly for SSE and WebSocket — proxying a lon
 
 **Session token delivery:** The browser passes the BetterAuth session token as a URL query parameter (`?token=<value>`). The token is the raw value from the `better-auth.session_token` cookie, read via `document.cookie` or the BetterAuth client's `getSession()` response. **Security note:** passing tokens in query params risks exposure in server access logs. This is acceptable for the initial implementation (localhost + self-hosted); a short-lived exchange token should replace it before public deployment.
 
-**Session validation:** BetterAuth stores session tokens as plain strings in the `session` table (`token` column). Elysia validates by running:
-```sql
-SELECT user_id, expires_at FROM session WHERE token = ?
+**Session validation:** BetterAuth stores session tokens as plain strings in the `session` table (`token` column). Elysia validates using Drizzle:
+```typescript
+const row = await db.select().from(sessionTable)
+  .where(eq(sessionTable.token, token))
+  .limit(1);
+if (!row[0] || row[0].expiresAt < new Date()) reject();
 ```
-against Turso using its own `TURSO_DATABASE_URL`/`TURSO_AUTH_TOKEN`. If no row exists or `expires_at < now`, the request is rejected. No call back to Next.js is made.
+Elysia has its own `TURSO_DATABASE_URL`/`TURSO_AUTH_TOKEN` and its own Drizzle instance. No call back to Next.js is made.
 
 **Session expiry during live connection:** On expiry detected at connection time or on periodic re-check (every 5 minutes), Elysia sends `{ type: "auth_error", reason: "session_expired" }` and closes the connection. The client refreshes the session via BetterAuth, then re-opens the connection with the new token.
 
@@ -95,28 +98,39 @@ Body and attachment fetches go through Next.js proxy routes. Next.js validates t
 
 ## Turso Schema Addition
 
-```sql
-CREATE TABLE user_state (
-  id          TEXT PRIMARY KEY,        -- UUID
-  user_id     TEXT NOT NULL REFERENCES user_profiles(user_id),
-  email_id    TEXT NOT NULL,           -- composite key: `${mailboxId}:${uid}`
-  is_archived INTEGER NOT NULL DEFAULT 0,
-  snoozed_until INTEGER,               -- Unix ms, NULL if not snoozed
-  is_replied  INTEGER NOT NULL DEFAULT 0,
-  created_at  INTEGER NOT NULL,
-  updated_at  INTEGER NOT NULL,
-  UNIQUE(user_id, email_id)
-);
+Defined with Drizzle schema (inline in `services/mail/index.ts` — no separate schema file):
 
-CREATE TABLE sender_rules (
-  id          TEXT PRIMARY KEY,
-  user_id     TEXT NOT NULL REFERENCES user_profiles(user_id),
-  address     TEXT NOT NULL,
-  rule        TEXT NOT NULL CHECK(rule IN ('allow', 'block')),
-  created_at  INTEGER NOT NULL,
-  UNIQUE(user_id, address)
-);
+```typescript
+import { sqliteTable, text, integer, unique } from "drizzle-orm/sqlite-core";
+
+const sessionTable = sqliteTable("session", {
+  id:        text("id").primaryKey(),
+  token:     text("token").notNull(),
+  userId:    text("user_id").notNull(),
+  expiresAt: integer("expires_at", { mode: "timestamp" }).notNull(),
+});
+
+const userState = sqliteTable("user_state", {
+  id:           text("id").primaryKey(),
+  userId:       text("user_id").notNull(),
+  emailId:      text("email_id").notNull(),   // `${mailboxAddress}:${uid}`
+  isArchived:   integer("is_archived", { mode: "boolean" }).notNull().default(false),
+  snoozedUntil: integer("snoozed_until"),     // Unix ms, null if not snoozed
+  isReplied:    integer("is_replied", { mode: "boolean" }).notNull().default(false),
+  createdAt:    integer("created_at").notNull(),
+  updatedAt:    integer("updated_at").notNull(),
+}, (t) => [unique().on(t.userId, t.emailId)]);
+
+const senderRules = sqliteTable("sender_rules", {
+  id:        text("id").primaryKey(),
+  userId:    text("user_id").notNull(),
+  address:   text("address").notNull(),
+  rule:      text("rule", { enum: ["allow", "block"] }).notNull(),
+  createdAt: integer("created_at").notNull(),
+}, (t) => [unique().on(t.userId, t.address)]);
 ```
+
+Drizzle migrations (`drizzle-kit generate` + `drizzle-kit migrate`) create these tables. Migration files live in `services/mail/drizzle/`.
 
 ---
 
