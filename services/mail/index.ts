@@ -428,17 +428,20 @@ const app = new Elysia()
       logger: false,
     });
 
-    await client.connect();
-    const lock = await client.getMailboxLock("INBOX");
     try {
-      const msg = await client.fetchOne(String(uid), { bodyStructure: true, source: true }, { uid: true });
-      if (!msg) return new Response("Not found", { status: 404 });
+      await client.connect();
+      const lock = await client.getMailboxLock("INBOX");
+      try {
+        const msg = await client.fetchOne(String(uid), { bodyStructure: true, source: true }, { uid: true });
+        if (!msg) return new Response("Not found", { status: 404 });
 
-      const body = msg.source?.toString("utf-8") ?? "";
-      const attachments = extractAttachmentManifest(msg.bodyStructure);
-      return Response.json({ body, attachments });
+        const body = msg.source?.toString("utf-8") ?? "";
+        const attachments = extractAttachmentManifest(msg.bodyStructure);
+        return Response.json({ body, attachments });
+      } finally {
+        lock.release();
+      }
     } finally {
-      lock.release();
       client.close();
     }
   })
@@ -462,10 +465,19 @@ const app = new Elysia()
       logger: false,
     });
 
-    await client.connect();
-    const lock = await client.getMailboxLock("INBOX");
-    const download = await client.download(String(uid), params.partId, { uid: true });
-    lock.release();
+    let download;
+    try {
+      await client.connect();
+      const lock = await client.getMailboxLock("INBOX");
+      try {
+        download = await client.download(String(uid), params.partId, { uid: true });
+      } finally {
+        lock.release();
+      }
+    } catch (err) {
+      client.close();
+      return new Response("Failed to download attachment", { status: 500 });
+    }
     // Stream directly — client.close() called after stream finishes
     const nodeStream = download.content;
     const webStream = new ReadableStream({
@@ -502,16 +514,19 @@ const app = new Elysia()
       logger: false,
     });
 
-    await client.connect();
-    const lock = await client.getMailboxLock("INBOX");
     try {
-      const uids = await client.search({ text: q }, { uid: true });
-      const emails = uids.length
-        ? await fetchUidRange(client, mailboxAddress, uids.join(","))
-        : [];
-      return Response.json({ emails });
+      await client.connect();
+      const lock = await client.getMailboxLock("INBOX");
+      try {
+        const uids = await client.search({ text: q }, { uid: true });
+        const emails = uids.length
+          ? await fetchUidRange(client, mailboxAddress, uids.join(","))
+          : [];
+        return Response.json({ emails });
+      } finally {
+        lock.release();
+      }
     } finally {
-      lock.release();
       client.close();
     }
   })
