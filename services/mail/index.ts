@@ -199,7 +199,6 @@ const app = new Elysia()
             }
 
             const allUids = seqToUid.filter(Boolean).sort((a, b) => b - a);
-            const startUid = cursor ?? (allUids[0] ?? 0);
             const watermark = allUids[0] ?? 0;
 
             // Initial eager batch: latest 500
