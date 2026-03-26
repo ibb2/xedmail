@@ -7,6 +7,7 @@ import hotkeys from "hotkeys-js";
 import { useRouter } from "next/navigation";
 import React, { useMemo, useState } from "react";
 import { SmartSearchBar } from "@/components/ui/smart-search-bar";
+import { db } from "@/lib/dexie";
 import type { EmailMetadata } from "@/lib/dexie";
 
 type Email = EmailMetadata & { body?: string };
@@ -580,7 +581,7 @@ export default function InboxClient({
 
   const toggleRead = async (email: Email) => {
     if (!email) return;
-    await fetch(
+    const response = await fetch(
       `/api/mail/emails/mailbox/${encodeURIComponent(email.mailboxId)}/${email.uid}?isRead=${email.isRead}`,
       {
         method: "PATCH",
@@ -589,9 +590,12 @@ export default function InboxClient({
         },
       },
     );
-    const updatedEmail = { ...email, isRead: !email.isRead };
-    if (selectedEmail && getEmailKey(selectedEmail) === getEmailKey(email)) {
-      setSelectedEmail(updatedEmail);
+    if (response.ok) {
+      await db.emails.update(email.id, { isRead: !email.isRead });
+      const updatedEmail = { ...email, isRead: !email.isRead };
+      if (selectedEmail && getEmailKey(selectedEmail) === getEmailKey(email)) {
+        setSelectedEmail(updatedEmail);
+      }
     }
   };
 
@@ -631,6 +635,7 @@ export default function InboxClient({
       { method: "POST" },
     );
     if (response.ok) {
+      await db.emails.delete(target.id);
       if (isReaderOpen) closeReader();
     }
   }, [selectedEmail, focusedEmail, isReaderOpen, closeReader]);
@@ -669,7 +674,7 @@ export default function InboxClient({
   const handleSnooze = async (until: Date) => {
     const target = isReaderOpen ? selectedEmail : focusedEmail;
     if (!target) return;
-    await fetch(
+    const response = await fetch(
       `/api/mail/emails/mailbox/${encodeURIComponent(target.mailboxId)}/${target.uid}/snooze`,
       {
         method: "POST",
@@ -677,8 +682,12 @@ export default function InboxClient({
         body: JSON.stringify({ until: until.toISOString() }),
       },
     );
-    setIsSnoozeOpen(false);
-    if (isReaderOpen) closeReader();
+    if (response.ok) {
+      setIsSnoozeOpen(false);
+      if (isReaderOpen) closeReader();
+    } else {
+      console.error("Snooze failed:", response.status, response.statusText);
+    }
   };
 
   const openReply = React.useCallback(() => {
