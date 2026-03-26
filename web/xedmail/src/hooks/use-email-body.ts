@@ -69,8 +69,11 @@ export function useEmailBody(id: string | null) {
         if (cached) {
           await db.bodies.update(id!, { lastAccessed: Date.now() });
           const text = await decompress(cached.compressedData);
-          if (!cancelled) setBody(text);
-          setLoading(false);
+          if (!cancelled) {
+            setBody(text);
+            setAttachments(JSON.parse(cached.attachmentsJson ?? "[]"));
+            setLoading(false);
+          }
           return;
         }
 
@@ -88,7 +91,7 @@ export function useEmailBody(id: string | null) {
         const { data, byteSize } = await compress(rawBody);
         const FIVE_MB = 5 * 1024 * 1024;
         if (byteSize <= FIVE_MB) {
-          await db.bodies.put({ id: id!, compressedData: data, lastAccessed: Date.now(), byteSize });
+          await db.bodies.put({ id: id!, compressedData: data, lastAccessed: Date.now(), byteSize, attachmentsJson: JSON.stringify(atts ?? []) });
           const prev = await db.syncState.get("totalBodyBytes");
           const prevBytes = prev ? JSON.parse(prev.value) as number : 0;
           await db.syncState.put({ key: "totalBodyBytes", value: JSON.stringify(prevBytes + byteSize) });

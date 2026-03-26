@@ -21,6 +21,7 @@ export type CachedBody = {
   compressedData: Uint8Array;
   lastAccessed: number;
   byteSize: number;
+  attachmentsJson?: string;
 };
 
 export type SearchIndexRow = {
