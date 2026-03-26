@@ -75,6 +75,25 @@ export async function ensureDatabaseSchema(): Promise<void> {
         sent INTEGER NOT NULL DEFAULT 0,
         sending INTEGER NOT NULL DEFAULT 0
       );`,
+      `CREATE TABLE IF NOT EXISTS user_state (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        email_id TEXT NOT NULL,
+        is_archived INTEGER NOT NULL DEFAULT 0,
+        snoozed_until INTEGER,
+        is_replied INTEGER NOT NULL DEFAULT 0,
+        created_at INTEGER NOT NULL,
+        updated_at INTEGER NOT NULL,
+        UNIQUE(user_id, email_id)
+      );`,
+      `CREATE TABLE IF NOT EXISTS sender_rules (
+        id TEXT PRIMARY KEY,
+        user_id TEXT NOT NULL,
+        address TEXT NOT NULL,
+        rule TEXT NOT NULL,
+        created_at INTEGER NOT NULL,
+        UNIQUE(user_id, address)
+      );`,
     ],
     "write",
   );

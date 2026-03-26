@@ -1,0 +1,38 @@
+import { sqliteTable, text, integer, unique } from "drizzle-orm/sqlite-core";
+
+// --- Schema ---
+export const sessionTable = sqliteTable("session", {
+  id:        text("id").primaryKey(),
+  token:     text("token").notNull(),
+  userId:    text("user_id").notNull(),
+  expiresAt: integer("expires_at", { mode: "timestamp" }).notNull(),
+});
+
+export const mailboxes = sqliteTable("mailboxes", {
+  id:                   text("id").primaryKey(),
+  userId:               text("user_id").notNull(),
+  emailAddress:         text("email_address").notNull(),
+  accessToken:          text("access_token").notNull(),
+  refreshToken:         text("refresh_token"),
+  accessTokenExpiresAt: integer("access_token_expires_at"),
+  isActive:             integer("is_active", { mode: "boolean" }).notNull().default(true),
+});
+
+export const userState = sqliteTable("user_state", {
+  id:           text("id").primaryKey(),
+  userId:       text("user_id").notNull(),
+  emailId:      text("email_id").notNull(),
+  isArchived:   integer("is_archived", { mode: "boolean" }).notNull().default(false),
+  snoozedUntil: integer("snoozed_until"),
+  isReplied:    integer("is_replied", { mode: "boolean" }).notNull().default(false),
+  createdAt:    integer("created_at").notNull(),
+  updatedAt:    integer("updated_at").notNull(),
+}, (t) => [unique().on(t.userId, t.emailId)]);
+
+export const senderRules = sqliteTable("sender_rules", {
+  id:        text("id").primaryKey(),
+  userId:    text("user_id").notNull(),
+  address:   text("address").notNull(),
+  rule:      text("rule", { enum: ["allow", "block"] }).notNull(),
+  createdAt: integer("created_at").notNull(),
+}, (t) => [unique().on(t.userId, t.address)]);
