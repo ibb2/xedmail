@@ -1,8 +1,13 @@
 import { Elysia } from "elysia";
 import { drizzle } from "drizzle-orm/libsql";
 import { createClient } from "@libsql/client";
-import { eq, gt, and } from "drizzle-orm";
+import { eq, and } from "drizzle-orm"; // used in auth + route handlers
 import { sessionTable, mailboxes, userState, senderRules } from "./schema";
+
+if (!process.env.TURSO_DATABASE_URL) {
+  console.error("[mail-service] TURSO_DATABASE_URL is required");
+  process.exit(1);
+}
 
 // --- DB client ---
 function getDb() {

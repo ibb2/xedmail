@@ -8,6 +8,8 @@ export const sessionTable = sqliteTable("session", {
   expiresAt: integer("expires_at", { mode: "timestamp" }).notNull(),
 });
 
+// Partial read-only projection — only columns needed by the Elysia IMAP daemon.
+// The full schema (provider, image, scopes, etc.) is defined in web/xedmail/src/lib/db.ts.
 export const mailboxes = sqliteTable("mailboxes", {
   id:                   text("id").primaryKey(),
   userId:               text("user_id").notNull(),
