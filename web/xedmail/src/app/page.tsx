@@ -442,7 +442,7 @@ export default function Home() {
                 )}
                 {recentSearches.map((s) => (
                   <a
-                    key={s.query}
+                    key={String(s.id)}
                     href="#"
                     className="flex items-center justify-between group transition-all"
                     style={{ padding: "16px", borderRadius: "1rem" }}

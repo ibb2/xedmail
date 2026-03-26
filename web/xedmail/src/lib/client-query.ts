@@ -1,5 +1,5 @@
 /**
- * Lightweight client-side query parser for filtering Jazz-cached messages.
+ * Lightweight client-side query parser for filtering Dexie-cached messages.
  * Mirrors the intent detection in mail-query.ts but runs in the browser
  * without needing imapflow types or server-side NLP.
  */
