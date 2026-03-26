@@ -140,7 +140,7 @@ async function startIdleConnection(
       await client.connect();
       await initIdle(conn, broadcast, reconnect);
     } catch {
-      reconnect(delayMs * 2);
+      void reconnect(delayMs * 2);
     }
   };
 
@@ -156,6 +156,13 @@ async function initIdle(
   reconnect: (delay?: number) => void,
 ) {
   const { client, mailboxAddress } = conn;
+
+  // Remove any listeners from previous IDLE sessions before re-registering
+  client.removeAllListeners("error");
+  client.removeAllListeners("close");
+  client.removeAllListeners("exists");
+  client.removeAllListeners("expunge");
+  client.removeAllListeners("flags");
 
   client.on("error", () => reconnect());
   client.on("close", () => reconnect());
@@ -366,7 +373,15 @@ const app = new Elysia()
     close(ws) {
       const connKey = (ws as any)._connKey as string | undefined;
       if (connKey) {
-        connections.get(connKey)?.wsClients.delete(ws);
+        const conn = connections.get(connKey);
+        if (conn) {
+          conn.wsClients.delete(ws);
+          // Clean up idle connection when no more clients are watching
+          if (conn.wsClients.size === 0) {
+            conn.client.close();
+            connections.delete(connKey);
+          }
+        }
       }
     },
     message() {},
