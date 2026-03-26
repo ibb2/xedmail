@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
 import "./globals.css";
-import { JazzProvider } from "@/providers/jazz-provider";
+import { SyncProvider } from "@/providers/sync-provider";
 
 export const metadata: Metadata = {
   title: "June",
@@ -27,9 +27,9 @@ export default function RootLayout({
           />
         </head>
         <body className="antialiased">
-          <JazzProvider>
+          <SyncProvider>
               {children}
-            </JazzProvider>
+            </SyncProvider>
         </body>
       </html>
   );
