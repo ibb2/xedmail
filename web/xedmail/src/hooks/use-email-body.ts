@@ -87,6 +87,8 @@ export function useEmailBody(id: string | null) {
           setAttachments(atts ?? []);
         }
 
+        if (cancelled) return;
+
         // Cache if ≤ 5 MB compressed
         const { data, byteSize } = await compress(rawBody);
         const FIVE_MB = 5 * 1024 * 1024;

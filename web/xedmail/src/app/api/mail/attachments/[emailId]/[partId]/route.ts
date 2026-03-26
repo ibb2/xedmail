@@ -23,10 +23,14 @@ export async function GET(
   }
 
   const { emailId, partId } = await params;
-  const res = await fetch(`${ELYSIA_URL}/attachments/${emailId}/${partId}`, {
-    headers: { "x-service-secret": SERVICE_SECRET },
-    cache: "no-store",
-  });
-  if (!res.ok) return NextResponse.json({ error: "Failed" }, { status: res.status });
-  return res;
+  try {
+    const res = await fetch(`${ELYSIA_URL}/attachments/${emailId}/${partId}`, {
+      headers: { "x-service-secret": SERVICE_SECRET },
+      cache: "no-store",
+    });
+    if (!res.ok) return NextResponse.json({ error: "Failed" }, { status: res.status });
+    return res;
+  } catch {
+    return NextResponse.json({ error: "Service unavailable" }, { status: 502 });
+  }
 }

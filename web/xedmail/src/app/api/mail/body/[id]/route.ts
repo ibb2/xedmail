@@ -20,10 +20,14 @@ export async function GET(_req: Request, { params }: { params: Promise<{ id: str
   }
 
   const { id } = await params;
-  const res = await fetch(`${ELYSIA_URL}/body/${id}`, {
-    headers: { "x-service-secret": SERVICE_SECRET },
-    cache: "no-store",
-  });
-  if (!res.ok) return NextResponse.json({ error: "Failed" }, { status: res.status });
-  return res;
+  try {
+    const res = await fetch(`${ELYSIA_URL}/body/${id}`, {
+      headers: { "x-service-secret": SERVICE_SECRET },
+      cache: "no-store",
+    });
+    if (!res.ok) return NextResponse.json({ error: "Failed" }, { status: res.status });
+    return res;
+  } catch {
+    return NextResponse.json({ error: "Service unavailable" }, { status: 502 });
+  }
 }
