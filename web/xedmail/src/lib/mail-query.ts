@@ -9,7 +9,8 @@ type MsParseResponse = {
   };
 };
 
-const MS_PARSER_URL = process.env.MS_PARSER_URL ?? "http://127.0.0.1:8000/parse";
+const MS_PARSER_URL =
+  process.env.MS_PARSER_URL ?? "http://127.0.0.1:8000/parse";
 const MS_PARSER_TIMEOUT_MS = 3000;
 
 function hasStructuredFilters(search: SearchObject) {
@@ -22,11 +23,13 @@ function hasStructuredFilters(search: SearchObject) {
 }
 
 // Matches natural language queries that mean "show all mail"
-const ALL_INTENT_PATTERN = /\b(all|every|show|get|list|display)\b.*\b(email|mail|message|inbox)\b/i;
+const ALL_INTENT_PATTERN =
+  /\b(all|every|show|get|list|display)\b.*\b(email|mail|message|inbox)\b/i;
 
 // Words that are clearly filler — if removing them leaves nothing meaningful,
 // the user just wants all mail.
-const FILLER_WORDS = /\b(my|me|the|all|every|everything|show|get|list|display|find|search|for|emails?|mail|messages?|inbox|please)\b/gi;
+const FILLER_WORDS =
+  /\b(my|me|the|all|every|everything|show|get|list|display|find|search|for|emails?|mail|messages?|inbox|please)\b/gi;
 
 function isAllIntent(query: string): boolean {
   if (!query) return true;
@@ -54,7 +57,9 @@ function buildFallbackSearchObject(query: string): SearchObject {
   }
 
   const now = new Date();
-  const today = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  const today = new Date(
+    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()),
+  );
 
   if (/\btoday\b/.test(normalized)) {
     search.on = today;
@@ -91,7 +96,9 @@ function buildFallbackSearchObject(query: string): SearchObject {
 function applyDateFilter(search: SearchObject, rawDate: string) {
   const normalized = rawDate.trim().toLowerCase();
   const now = new Date();
-  const today = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+  const today = new Date(
+    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()),
+  );
 
   if (normalized.includes("today")) {
     search.on = today;
@@ -113,7 +120,10 @@ export async function buildSearchObject(query: string): Promise<SearchObject> {
 
   const fallback = buildFallbackSearchObject(trimmedQuery);
   const abortController = new AbortController();
-  const timeout = setTimeout(() => abortController.abort(), MS_PARSER_TIMEOUT_MS);
+  const timeout = setTimeout(
+    () => abortController.abort(),
+    MS_PARSER_TIMEOUT_MS,
+  );
 
   try {
     const response = await fetch(MS_PARSER_URL, {

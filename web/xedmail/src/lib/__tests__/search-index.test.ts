@@ -8,11 +8,23 @@ describe("searchIndex", () => {
   });
 
   it("finds added email by subject", async () => {
-    await addToIndex([{
-      id: "a@b.com:1", mailboxId: "a@b.com", uid: 1, threadId: "",
-      subject: "Hello World", fromName: "Alice", fromAddress: "alice@x.com",
-      date: 0, snippet: "", isRead: false, isStarred: false, labels: [], hasAttachments: false,
-    }]);
+    await addToIndex([
+      {
+        id: "a@b.com:1",
+        mailboxId: "a@b.com",
+        uid: 1,
+        threadId: "",
+        subject: "Hello World",
+        fromName: "Alice",
+        fromAddress: "alice@x.com",
+        date: 0,
+        snippet: "",
+        isRead: false,
+        isStarred: false,
+        labels: [],
+        hasAttachments: false,
+      },
+    ]);
     const results = searchIndex("hello");
     expect(results).toContain("a@b.com:1");
   });

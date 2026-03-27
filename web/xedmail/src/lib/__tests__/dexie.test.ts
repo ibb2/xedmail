@@ -3,7 +3,9 @@ import "fake-indexeddb/auto";
 import { db, getSyncState, setSyncState } from "../dexie";
 
 describe("syncState helpers", () => {
-  beforeEach(async () => { await db.syncState.clear(); });
+  beforeEach(async () => {
+    await db.syncState.clear();
+  });
 
   it("returns fallback when key missing", async () => {
     expect(await getSyncState("missing", 42)).toBe(42);

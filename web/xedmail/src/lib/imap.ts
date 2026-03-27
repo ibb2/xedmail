@@ -1,5 +1,10 @@
 import { Readable } from "stream";
-import { ImapFlow, type FetchMessageObject, type MessageStructureObject, type SearchObject } from "imapflow";
+import {
+  ImapFlow,
+  type FetchMessageObject,
+  type MessageStructureObject,
+  type SearchObject,
+} from "imapflow";
 import type { EmailDto, FolderDto } from "@/lib/mail-types";
 
 type ImapAuth = {
@@ -55,7 +60,11 @@ function messageToEmailDto(
 ): EmailDto {
   const envelope = message.envelope;
   const from = addressToTuple(envelope?.from?.[0]);
-  const to = envelope?.to?.map((entry) => entry.address).filter(Boolean).join(", ") ?? "unknown";
+  const to =
+    envelope?.to
+      ?.map((entry) => entry.address)
+      .filter(Boolean)
+      .join(", ") ?? "unknown";
   const id = `${mailboxAddress}:${message.uid}`;
   const date = message.internalDate
     ? new Date(message.internalDate).toISOString()
@@ -124,7 +133,10 @@ export async function getFolders(auth: ImapAuth): Promise<FolderDto[]> {
 
     for (const folder of folders) {
       try {
-        const status = await client.status(folder.path, { messages: true, unseen: true });
+        const status = await client.status(folder.path, {
+          messages: true,
+          unseen: true,
+        });
         output.push({
           id: folder.path,
           name: folder.name,
@@ -246,7 +258,9 @@ export async function getEmailByUid(
       const bodyPart = selectBodyPart(message.bodyStructure);
 
       if (bodyPart?.part) {
-        const downloaded = await client.download(uid, bodyPart.part, { uid: true });
+        const downloaded = await client.download(uid, bodyPart.part, {
+          uid: true,
+        });
         body = await readableToString(downloaded.content);
       } else if (message.source) {
         body = message.source.toString("utf8");
@@ -282,10 +296,7 @@ export async function setReadStatus(
   });
 }
 
-export async function archiveEmail(
-  auth: ImapAuth,
-  uid: string,
-): Promise<void> {
+export async function archiveEmail(auth: ImapAuth, uid: string): Promise<void> {
   await withImapClient(auth, async (client) => {
     const lock = await client.getMailboxLock(INBOX);
     try {

@@ -10,7 +10,12 @@ export async function GET(req: Request) {
   const res = await handler.GET(req);
   if (res.status >= 500) {
     const body = await res.clone().text();
-    console.error("[auth] GET error", res.status, new URL(req.url).pathname, body);
+    console.error(
+      "[auth] GET error",
+      res.status,
+      new URL(req.url).pathname,
+      body,
+    );
   }
   return res;
 }

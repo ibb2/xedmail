@@ -2,7 +2,10 @@ import { Document } from "flexsearch";
 import type { EmailMetadata } from "@/lib/dexie";
 import { db } from "@/lib/dexie";
 
-type IndexedEmail = Pick<EmailMetadata, "id" | "subject" | "fromName" | "fromAddress" | "snippet">;
+type IndexedEmail = Pick<
+  EmailMetadata,
+  "id" | "subject" | "fromName" | "fromAddress" | "snippet"
+>;
 
 let index: InstanceType<typeof Document<IndexedEmail>> | null = null;
 let addedSinceSnapshot = 0;
@@ -14,10 +17,10 @@ function getIndex() {
       document: {
         id: "id",
         index: [
-          { field: "subject",     tokenize: "forward" },
-          { field: "fromName",    tokenize: "forward" },
+          { field: "subject", tokenize: "forward" },
+          { field: "fromName", tokenize: "forward" },
           { field: "fromAddress", tokenize: "forward" },
-          { field: "snippet",     tokenize: "forward" },
+          { field: "snippet", tokenize: "forward" },
         ],
       },
       cache: true,
@@ -37,7 +40,13 @@ export async function rehydrateIndex(): Promise<void> {
 export async function addToIndex(emails: EmailMetadata[]): Promise<void> {
   const idx = getIndex();
   for (const e of emails) {
-    idx.add({ id: e.id, subject: e.subject, fromName: e.fromName, fromAddress: e.fromAddress, snippet: e.snippet });
+    idx.add({
+      id: e.id,
+      subject: e.subject,
+      fromName: e.fromName,
+      fromAddress: e.fromAddress,
+      snippet: e.snippet,
+    });
   }
   addedSinceSnapshot += emails.length;
   if (addedSinceSnapshot >= SNAPSHOT_EVERY) {
@@ -56,7 +65,8 @@ async function persistSnapshot(): Promise<void> {
   for (const field of fields) {
     await new Promise<void>((resolve) => {
       (idx as any).export(field, async (key: string, data: string) => {
-        if (data !== undefined) await db.searchIndex.put({ field: key, snapshot: data });
+        if (data !== undefined)
+          await db.searchIndex.put({ field: key, snapshot: data });
         resolve();
       });
     });
