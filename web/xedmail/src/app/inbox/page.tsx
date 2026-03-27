@@ -1,6 +1,6 @@
 "use client";
 
-import React, { Suspense, useEffect, useRef, useState } from "react";
+import React, { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
 import InboxClient from "@/components/inbox/inbox-client";
 import { useAllInboxEmails } from "@/hooks/use-inbox";
@@ -19,20 +19,14 @@ type ParseResponse = {
   };
 };
 
-function msResponseToIntent(query: string, data: ParseResponse): QueryIntent {
-  const { filters } = data;
-
+function msFiltersToIntent(query: string, filters: ParseResponse["filters"]): QueryIntent | null {
   if (filters.status === "unread") return { type: "status", seen: false };
   if (filters.status === "read") return { type: "status", seen: true };
-
   if (filters.from) return { type: "from", address: filters.from.toLowerCase() };
-
   if (filters.date) {
     const d = filters.date.toLowerCase();
     const now = new Date();
-    const today = new Date(
-      Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()),
-    );
+    const today = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
     if (d.includes("today")) return { type: "date", date: today };
     if (d.includes("yesterday")) {
       const yesterday = new Date(today);
@@ -40,8 +34,7 @@ function msResponseToIntent(query: string, data: ParseResponse): QueryIntent {
       return { type: "date", date: yesterday };
     }
   }
-
-  return { type: "keyword", text: query.trim().toLowerCase() };
+  return null; // no structured filters extracted
 }
 
 function InboxPage() {
@@ -51,76 +44,82 @@ function InboxPage() {
   const searchParams = useSearchParams();
   const query = searchParams.get("query")?.trim() ?? "";
 
-  const [displayedEmails, setDisplayedEmails] = useState<EmailMetadata[]>([]);
+  const [serverResults, setServerResults] = useState<EmailMetadata[] | null>(null);
   const [isServerSearching, setIsServerSearching] = useState(false);
   const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Runs on every query/emails change — parses intent (FastAPI → regex fallback),
-  // filters Dexie cache, then falls back to IMAP server search if needed.
+  // Regex parse — synchronous, runs on every render, instant structured filtering.
+  const regexIntent = useMemo(() => parseQueryIntent(query), [query]);
+
+  // Structured queries (unread/read/today/from:x) — filter Dexie immediately,
+  // no API call needed. Only keyword queries fall through to the async path.
+  const localResults = useMemo(() => {
+    if (!query) return emails;
+    if (regexIntent.type !== "keyword" && regexIntent.type !== "all") {
+      return filterByIntent(emails, regexIntent);
+    }
+    // Keyword: FlexSearch over full indexed body text
+    const matchedIds = new Set(searchIndex(query));
+    if (matchedIds.size > 0) return emails.filter(e => matchedIds.has(e.id));
+    // Substring fallback on cached metadata
+    return filterByIntent(emails, regexIntent);
+  }, [emails, query, regexIntent]);
+
+  // FastAPI NLP — only called for keyword queries where regex found nothing
+  // structured. Tries to extract hidden structure ("emails from my boss last
+  // week") that a regex can't detect. Falls back gracefully if unavailable.
   useEffect(() => {
-    if (!query) {
-      setDisplayedEmails(emails);
+    // Clear server results whenever query changes or local results arrive
+    if (!query || regexIntent.type !== "keyword") {
+      setServerResults(null);
       setIsServerSearching(false);
+      if (debounceRef.current) clearTimeout(debounceRef.current);
       return;
     }
 
     if (debounceRef.current) clearTimeout(debounceRef.current);
 
     debounceRef.current = setTimeout(async () => {
-      // 1. Parse intent via FastAPI; fall back to regex if unavailable
-      let intent: QueryIntent;
+      // Try FastAPI to see if it can extract structure from the NL query
       try {
         const res = await fetch(
           `/api/mail/parse?q=${encodeURIComponent(query)}`,
-          { signal: AbortSignal.timeout(3000) },
-        );
-        const data: ParseResponse = res.ok
-          ? await res.json()
-          : { intent: null, filters: {} };
-        intent =
-          data.intent === "search_emails"
-            ? msResponseToIntent(query, data)
-            : parseQueryIntent(query); // regex fallback
-      } catch {
-        intent = parseQueryIntent(query); // offline fallback
-      }
-
-      // 2. Apply structured filters directly to Dexie cache
-      if (intent.type !== "keyword" && intent.type !== "all") {
-        const filtered = filterByIntent(emails, intent);
-        setDisplayedEmails(filtered);
-        setIsServerSearching(false);
-        return;
-      }
-
-      // 3. Keyword — try FlexSearch over full indexed body text
-      const matchedIds = new Set(searchIndex(query));
-      if (matchedIds.size > 0) {
-        setDisplayedEmails(emails.filter(e => matchedIds.has(e.id)));
-        setIsServerSearching(false);
-        return;
-      }
-
-      // 4. Substring fallback against cached metadata
-      const substringMatches = filterByIntent(emails, intent);
-      if (substringMatches.length > 0) {
-        setDisplayedEmails(substringMatches);
-        setIsServerSearching(false);
-        return;
-      }
-
-      // 5. Nothing local — hit IMAP server search
-      setIsServerSearching(true);
-      try {
-        const res = await fetch(
-          `/api/mail/search?q=${encodeURIComponent(query)}`,
+          { signal: AbortSignal.timeout(2000) },
         );
         if (res.ok) {
-          const data = await res.json();
-          setDisplayedEmails(data.emails ?? []);
+          const data: ParseResponse = await res.json();
+          if (data.intent === "search_emails" && data.filters) {
+            const nlpIntent = msFiltersToIntent(query, data.filters);
+            if (nlpIntent) {
+              // FastAPI found structure — filter Dexie with it
+              const filtered = filterByIntent(emails, nlpIntent);
+              if (filtered.length > 0) {
+                setServerResults(filtered);
+                return;
+              }
+            }
+          }
         }
       } catch {
-        setDisplayedEmails([]);
+        // FastAPI unavailable — fall through to IMAP
+      }
+
+      // No local hits from NLP or regex — fall back to IMAP full-text search
+      if (localResults.length > 0) {
+        // Local results exist, no need for IMAP
+        setServerResults(null);
+        return;
+      }
+
+      setIsServerSearching(true);
+      try {
+        const res = await fetch(`/api/mail/search?q=${encodeURIComponent(query)}`);
+        if (res.ok) {
+          const data = await res.json();
+          setServerResults(data.emails ?? []);
+        }
+      } catch {
+        setServerResults([]);
       } finally {
         setIsServerSearching(false);
       }
@@ -129,7 +128,9 @@ function InboxPage() {
     return () => {
       if (debounceRef.current) clearTimeout(debounceRef.current);
     };
-  }, [query, emails]);
+  }, [query, regexIntent.type, localResults.length, emails]);
+
+  const displayedEmails = serverResults ?? localResults;
 
   return (
     <InboxClient
