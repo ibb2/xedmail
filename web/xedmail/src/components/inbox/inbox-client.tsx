@@ -508,10 +508,16 @@ const TABS = ["Focused", "Unread", "Starred"] as const;
 export default function InboxClient({
   emails,
   isLoading,
+  isServerSearching,
+  isSyncing,
+  syncedCount,
   query,
 }: {
   emails: Email[];
   isLoading: boolean;
+  isServerSearching?: boolean;
+  isSyncing?: boolean;
+  syncedCount?: number;
   query: string;
 }) {
   const [selectedEmail, setSelectedEmail] = useState<Email | null>(null);
@@ -1034,22 +1040,58 @@ export default function InboxClient({
                 {unreadCount} Decisions Pending
               </span>
             </div>
-            <span
-              style={{
-                fontFamily: "'JetBrains Mono', monospace",
-                fontSize: 9,
-                letterSpacing: "0.15em",
-                textTransform: "uppercase",
-                color: "rgba(216,195,180,0.5)",
-              }}
-            >
-              Last Synced:{" "}
-              {new Date().toLocaleTimeString([], {
-                hour: "2-digit",
-                minute: "2-digit",
-              })}{" "}
-              GMT
-            </span>
+            <div className="flex items-center gap-2">
+              {isSyncing ? (
+                <>
+                  <div
+                    className="animate-spin rounded-full"
+                    style={{
+                      width: 6,
+                      height: 6,
+                      border: "1.5px solid rgba(255,183,123,0.3)",
+                      borderTopColor: "#FFB77B",
+                      flexShrink: 0,
+                    }}
+                  />
+                  <span
+                    style={{
+                      fontFamily: "'JetBrains Mono', monospace",
+                      fontSize: 9,
+                      letterSpacing: "0.15em",
+                      textTransform: "uppercase",
+                      color: "#FFB77B",
+                    }}
+                  >
+                    Syncing{syncedCount !== undefined ? ` · ${syncedCount.toLocaleString()} cached` : ""}
+                  </span>
+                </>
+              ) : (
+                <>
+                  <div
+                    style={{
+                      width: 6,
+                      height: 6,
+                      borderRadius: "9999px",
+                      background: "#4ade80",
+                      flexShrink: 0,
+                    }}
+                  />
+                  <span
+                    style={{
+                      fontFamily: "'JetBrains Mono', monospace",
+                      fontSize: 9,
+                      letterSpacing: "0.15em",
+                      textTransform: "uppercase",
+                      color: "rgba(216,195,180,0.5)",
+                    }}
+                  >
+                    {syncedCount !== undefined
+                      ? `${syncedCount.toLocaleString()} emails cached`
+                      : "Synced"}
+                  </span>
+                </>
+              )}
+            </div>
           </div>
 
           {/* Gatekeeper */}
@@ -1253,25 +1295,7 @@ export default function InboxClient({
             {/* Email list */}
             <div style={{ borderTop: "none" }}>
               {/* Empty / loading */}
-              {!isLoading && filteredEmails.length === 0 && (
-                <div
-                  className="flex flex-col items-center justify-center"
-                  style={{ padding: "64px 0" }}
-                >
-                  <span
-                    className="material-symbols-outlined"
-                    style={{ fontSize: 36, color: "#353535", marginBottom: 12 }}
-                  >
-                    mail
-                  </span>
-                  <p style={{ fontSize: 14, color: "#D8C3B4" }}>
-                    {query
-                      ? `No emails matched "${query}".`
-                      : "Your inbox is empty."}
-                  </p>
-                </div>
-              )}
-              {isLoading && filteredEmails.length === 0 && (
+              {(isLoading || isServerSearching) && filteredEmails.length === 0 && (
                 <div
                   className="flex flex-col items-center justify-center"
                   style={{ padding: "64px 0" }}
@@ -1287,7 +1311,25 @@ export default function InboxClient({
                     }}
                   />
                   <p style={{ fontSize: 12, color: "#D8C3B4" }}>
-                    {query ? `Searching for "${query}"…` : "Loading emails…"}
+                    {isServerSearching ? `Searching server for "${query}"…` : "Loading emails…"}
+                  </p>
+                </div>
+              )}
+              {!isLoading && !isServerSearching && filteredEmails.length === 0 && (
+                <div
+                  className="flex flex-col items-center justify-center"
+                  style={{ padding: "64px 0" }}
+                >
+                  <span
+                    className="material-symbols-outlined"
+                    style={{ fontSize: 36, color: "#353535", marginBottom: 12 }}
+                  >
+                    mail
+                  </span>
+                  <p style={{ fontSize: 14, color: "#D8C3B4" }}>
+                    {query
+                      ? `No emails matched "${query}".`
+                      : "Your inbox is empty."}
                   </p>
                 </div>
               )}

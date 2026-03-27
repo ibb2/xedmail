@@ -19,15 +19,15 @@ const idleCallback: (fn: () => void) => void =
     ? (fn) => requestIdleCallback(fn)
     : (fn) => setTimeout(fn, 0);
 
-type SyncContextValue = { isReady: boolean };
-const SyncContext = createContext<SyncContextValue>({ isReady: false });
+type SyncContextValue = { isReady: boolean; isSyncing: boolean };
+const SyncContext = createContext<SyncContextValue>({ isReady: false, isSyncing: false });
 
 async function writeBatch(emails: EmailMetadata[]) {
   await db.emails.bulkPut(emails);
   await addToIndex(emails);
 }
 
-async function openSSE(mailboxAddress: string, token: string) {
+async function openSSE(mailboxAddress: string, token: string, onDone?: () => void) {
   const cursor = await getSyncState<number | null>(
     `backfillCursor_${mailboxAddress}`,
     null,
@@ -72,14 +72,16 @@ async function openSSE(mailboxAddress: string, token: string) {
         await setSyncState(`backfillComplete_${mailboxAddress}`, true);
         await setSyncState(`watermarkUid_${mailboxAddress}`, msg.watermarkUid);
         es.close();
+        onDone?.();
       }
     })().catch(console.error);
   };
 
-  // Issue 3: Let EventSource auto-reconnect on transient errors; only no-op if already closed
   es.onerror = () => {
-    if (es.readyState === EventSource.CLOSED) return; // already closed, nothing to do
-    // For truly unrecoverable errors, EventSource will close itself
+    if (es.readyState === EventSource.CLOSED) {
+      onDone?.();
+      return;
+    }
   };
 
   return es;
@@ -124,7 +126,9 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
   const token = (session as any)?.session?.token as string | undefined;
   const esRefs = useRef<EventSource[]>([]);
   const wsRefs = useRef<WebSocket[]>([]);
+  const activeSseCount = useRef(0);
   const [isReady, setIsReady] = React.useState(false);
+  const [isSyncing, setIsSyncing] = React.useState(false);
 
   // Evict stale bodies then rehydrate FlexSearch from Dexie on mount
   useEffect(() => {
@@ -176,7 +180,13 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
           false,
         );
         if (!complete) {
-          const es = await openSSE(addr, activeToken);
+          activeSseCount.current += 1;
+          setIsSyncing(true);
+          const onDone = () => {
+            activeSseCount.current = Math.max(0, activeSseCount.current - 1);
+            if (activeSseCount.current === 0) setIsSyncing(false);
+          };
+          const es = await openSSE(addr, activeToken, onDone);
           if (cancelled) { es.close(); break; }
           esRefs.current.push(es);
         }
@@ -198,10 +208,14 @@ export function SyncProvider({ children }: { children: React.ReactNode }) {
   }, [token]);
 
   return (
-    <SyncContext.Provider value={{ isReady }}>{children}</SyncContext.Provider>
+    <SyncContext.Provider value={{ isReady, isSyncing }}>{children}</SyncContext.Provider>
   );
 }
 
 export function useSyncReady() {
   return useContext(SyncContext).isReady;
+}
+
+export function useSyncState() {
+  return useContext(SyncContext);
 }
