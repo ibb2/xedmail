@@ -3,10 +3,12 @@
 import { useSession, signOut } from "@/lib/auth-client";
 import hotkeys from "hotkeys-js";
 import { useRouter } from "next/navigation";
-import React, { useEffect, useMemo, useRef, useState } from "react";
+import React, { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { SmartSearchBar } from "@/components/ui/smart-search-bar";
 import { extractContacts } from "@/lib/contacts";
-import { useJazzInboxState } from "@/providers/jazz-provider";
+import { useLiveQuery } from "dexie-react-hooks";
+import { db } from "@/lib/dexie";
+import { useAllInboxEmails } from "@/hooks/use-inbox";
 
 const QUICK_FILTERS = [
   { icon: "attach_file", label: "Has Attachment" },
@@ -26,7 +28,8 @@ const CONTACT_PALETTES = [
 function getInitials(name: string, address: string): string {
   if (name) {
     const parts = name.trim().split(/\s+/);
-    if (parts.length >= 2) return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+    if (parts.length >= 2)
+      return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
     if (parts[0]?.length >= 1) return parts[0][0].toUpperCase();
   }
   return address[0]?.toUpperCase() ?? "?";
@@ -34,18 +37,21 @@ function getInitials(name: string, address: string): string {
 
 export default function Home() {
   const router = useRouter();
-  const {
-    mailboxes,
-    messages,
-    folders,
-    syncInbox,
-    recentSearches,
-    addRecentSearch,
-  } = useJazzInboxState();
-  const contacts = useMemo(() => extractContacts(messages), [messages]);
+  const messages = useAllInboxEmails();
+  const recentSearches = useLiveQuery(
+    () => db.recentSearches.orderBy("searchedAt").reverse().limit(10).toArray(),
+    [],
+    [],
+  ) ?? [];
+  const addRecentSearch = useCallback(async (q: string) => {
+    await db.recentSearches.add({ query: q, searchedAt: Date.now() });
+  }, []);
+  const contacts = useMemo(
+    () => extractContacts(messages.map((m) => ({ from: [m.fromName, m.fromAddress] as [string, string] }))),
+    [messages],
+  );
   const searchRef = useRef<HTMLInputElement>(null);
   const [query, setQuery] = useState("");
-  const [ran, setRan] = useState(false);
   const [profileOpen, setProfileOpen] = useState(false);
   const { data: session } = useSession();
 
@@ -65,19 +71,6 @@ export default function Home() {
     router.push(data["authUrl"]);
   };
 
-  const getMailboxes = async () => {
-    const response = await fetch("/api/mail/mailboxes", {});
-    const nextMailboxes = await response.json();
-    syncInbox({ messages, folders, mailboxes: nextMailboxes });
-  };
-
-  useEffect(() => {
-    if (!ran) {
-      getMailboxes();
-      setRan(true);
-    }
-  }, [ran]);
-
   useEffect(() => {
     hotkeys("command+k, ctrl+k", (e) => {
       e.preventDefault();
@@ -87,8 +80,8 @@ export default function Home() {
     return () => hotkeys.unbind("command+k, ctrl+k");
   }, []);
 
-  const formatTimeAgo = (iso: string) => {
-    const diff = Date.now() - new Date(iso).getTime();
+  const formatTimeAgo = (ts: number) => {
+    const diff = Date.now() - ts;
     const mins = Math.floor(diff / 60000);
     if (mins < 1) return "Just now";
     if (mins < 60) return `${mins}m ago`;
@@ -218,38 +211,101 @@ export default function Home() {
                     boxShadow: "0 8px 24px rgba(0,0,0,0.4)",
                   }}
                 >
-                  <div style={{ padding: "8px 12px 6px", borderBottom: "1px solid rgba(82,68,57,0.3)", marginBottom: 4 }}>
-                    <div style={{ fontSize: 13, fontWeight: 600, color: "#E5E2E1" }}>{session?.user?.name}</div>
-                    <div style={{ fontSize: 11, color: "rgba(216,195,180,0.5)" }}>{session?.user?.email}</div>
+                  <div
+                    style={{
+                      padding: "8px 12px 6px",
+                      borderBottom: "1px solid rgba(82,68,57,0.3)",
+                      marginBottom: 4,
+                    }}
+                  >
+                    <div
+                      style={{
+                        fontSize: 13,
+                        fontWeight: 600,
+                        color: "#E5E2E1",
+                      }}
+                    >
+                      {session?.user?.name}
+                    </div>
+                    <div
+                      style={{ fontSize: 11, color: "rgba(216,195,180,0.5)" }}
+                    >
+                      {session?.user?.email}
+                    </div>
                   </div>
                   <button
                     type="button"
-                    onClick={() => { setProfileOpen(false); beginOauthFlow(); }}
-                    style={{
-                      display: "flex", alignItems: "center", gap: 8, width: "100%",
-                      padding: "8px 12px", borderRadius: "0.5rem", background: "transparent",
-                      border: "none", color: "#E5E2E1", fontSize: 13, cursor: "pointer",
-                      fontFamily: "'Inter', sans-serif", textAlign: "left",
+                    onClick={() => {
+                      setProfileOpen(false);
+                      beginOauthFlow();
                     }}
-                    onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(255,183,123,0.08)")}
-                    onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 8,
+                      width: "100%",
+                      padding: "8px 12px",
+                      borderRadius: "0.5rem",
+                      background: "transparent",
+                      border: "none",
+                      color: "#E5E2E1",
+                      fontSize: 13,
+                      cursor: "pointer",
+                      fontFamily: "'Inter', sans-serif",
+                      textAlign: "left",
+                    }}
+                    onMouseEnter={(e) =>
+                      (e.currentTarget.style.background =
+                        "rgba(255,183,123,0.08)")
+                    }
+                    onMouseLeave={(e) =>
+                      (e.currentTarget.style.background = "transparent")
+                    }
                   >
-                    <span className="material-symbols-outlined" style={{ fontSize: 16, color: "#FFB77B" }}>inbox</span>
+                    <span
+                      className="material-symbols-outlined"
+                      style={{ fontSize: 16, color: "#FFB77B" }}
+                    >
+                      inbox
+                    </span>
                     Connect inbox
                   </button>
                   <button
                     type="button"
-                    onClick={async () => { setProfileOpen(false); await signOut(); router.push("/login"); }}
-                    style={{
-                      display: "flex", alignItems: "center", gap: 8, width: "100%",
-                      padding: "8px 12px", borderRadius: "0.5rem", background: "transparent",
-                      border: "none", color: "rgba(216,195,180,0.6)", fontSize: 13, cursor: "pointer",
-                      fontFamily: "'Inter', sans-serif", textAlign: "left",
+                    onClick={async () => {
+                      setProfileOpen(false);
+                      await signOut();
+                      router.push("/login");
                     }}
-                    onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(255,183,123,0.08)")}
-                    onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: 8,
+                      width: "100%",
+                      padding: "8px 12px",
+                      borderRadius: "0.5rem",
+                      background: "transparent",
+                      border: "none",
+                      color: "rgba(216,195,180,0.6)",
+                      fontSize: 13,
+                      cursor: "pointer",
+                      fontFamily: "'Inter', sans-serif",
+                      textAlign: "left",
+                    }}
+                    onMouseEnter={(e) =>
+                      (e.currentTarget.style.background =
+                        "rgba(255,183,123,0.08)")
+                    }
+                    onMouseLeave={(e) =>
+                      (e.currentTarget.style.background = "transparent")
+                    }
                   >
-                    <span className="material-symbols-outlined" style={{ fontSize: 16 }}>logout</span>
+                    <span
+                      className="material-symbols-outlined"
+                      style={{ fontSize: 16 }}
+                    >
+                      logout
+                    </span>
                     Sign out
                   </button>
                 </div>
@@ -386,7 +442,7 @@ export default function Home() {
                 )}
                 {recentSearches.map((s) => (
                   <a
-                    key={s.query}
+                    key={String(s.id)}
                     href="#"
                     className="flex items-center justify-between group transition-all"
                     style={{ padding: "16px", borderRadius: "1rem" }}
@@ -446,10 +502,19 @@ export default function Home() {
               </h3>
               <div className="flex flex-wrap gap-3">
                 {contacts.length === 0 && (
-                  <p style={{ padding: "16px", color: "rgba(216,195,180,0.4)", fontSize: 14 }}>No contacts yet</p>
+                  <p
+                    style={{
+                      padding: "16px",
+                      color: "rgba(216,195,180,0.4)",
+                      fontSize: 14,
+                    }}
+                  >
+                    No contacts yet
+                  </p>
                 )}
                 {contacts.slice(0, 6).map((c, idx) => {
-                  const palette = CONTACT_PALETTES[idx % CONTACT_PALETTES.length];
+                  const palette =
+                    CONTACT_PALETTES[idx % CONTACT_PALETTES.length];
                   const initials = getInitials(c.name, c.address);
                   const displayName = c.name || c.address.split("@")[0];
                   return (

@@ -3,11 +3,10 @@
 import { createAuthClient } from "better-auth/client";
 import { useStore } from "better-auth/react";
 import { magicLinkClient } from "better-auth/client/plugins";
-import { jazzPluginClient } from "jazz-tools/better-auth/auth/client";
 
 export const authClient = createAuthClient({
   baseURL: process.env.NEXT_PUBLIC_BETTER_AUTH_URL,
-  plugins: [magicLinkClient(), jazzPluginClient()],
+  plugins: [magicLinkClient()],
 });
 
 export const { signIn, signUp, signOut } = authClient;

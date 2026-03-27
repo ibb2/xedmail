@@ -4,7 +4,6 @@ import { getDbClient } from "@/lib/db";
 import { LibsqlDialect } from "kysely-libsql";
 import { Kysely } from "kysely";
 import { magicLink } from "better-auth/plugins";
-import { jazzPlugin } from "jazz-tools/better-auth/auth/server";
 
 export const auth = betterAuth({
   database: {
@@ -22,7 +21,6 @@ export const auth = betterAuth({
     },
   },
   plugins: [
-    jazzPlugin(),
     magicLink({
       sendMagicLink: async ({ email, url }) => {
         if (!process.env.RESEND_API_KEY || !process.env.RESEND_FROM_EMAIL) {
@@ -53,28 +51,11 @@ export const auth = betterAuth({
               args: [user.id, now, now],
             });
           } catch (err) {
-            console.error("[auth] Failed to upsert user_profiles for", user.id, err);
-          }
-        },
-      },
-      // When an existing user re-signs-in via Google, BetterAuth calls user.update to
-      // refresh their profile. If jazzAuth is in context (injected by the Jazz callback
-      // hook), backfill encryptedCredentials so get-session stops returning 500.
-      update: {
-        before: async (user: Record<string, unknown>, context: Record<string, unknown>) => {
-          if (
-            context &&
-            "jazzAuth" in context &&
-            (context.jazzAuth as any)?.encryptedCredentials
-          ) {
-            const jazzAuth = context.jazzAuth as { accountID: string; encryptedCredentials: string };
-            return {
-              data: {
-                ...user,
-                accountID: jazzAuth.accountID,
-                encryptedCredentials: jazzAuth.encryptedCredentials,
-              },
-            };
+            console.error(
+              "[auth] Failed to upsert user_profiles for",
+              user.id,
+              err,
+            );
           }
         },
       },
