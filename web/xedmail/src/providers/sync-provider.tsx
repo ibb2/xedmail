@@ -8,6 +8,7 @@ import {
   rehydrateIndex,
   removeFromIndex,
 } from "@/lib/search-index";
+import { storeBody } from "@/lib/body-cache";
 import type { EmailMetadata } from "@/lib/dexie";
 
 const ELYSIA_URL =
@@ -22,9 +23,27 @@ const idleCallback: (fn: () => void) => void =
 type SyncContextValue = { isReady: boolean; isSyncing: boolean };
 const SyncContext = createContext<SyncContextValue>({ isReady: false, isSyncing: false });
 
-async function writeBatch(emails: EmailMetadata[]) {
+async function writeBatch(
+  emails: EmailMetadata[],
+  bodies?: Array<{ id: string; text: string }>,
+) {
   await db.emails.bulkPut(emails);
-  await addToIndex(emails);
+
+  const bodyMap = bodies?.length
+    ? new Map(bodies.map(b => [b.id, b.text]))
+    : undefined;
+
+  await addToIndex(emails, bodyMap);
+
+  if (bodies?.length) {
+    for (const { id, text } of bodies) {
+      if (!text) continue;
+      // Skip if already cached (resuming after cursor)
+      const existing = await db.bodies.get(id);
+      if (existing) continue;
+      await storeBody(id, text);
+    }
+  }
 }
 
 async function openSSE(mailboxAddress: string, token: string, onDone?: () => void) {
@@ -46,7 +65,7 @@ async function openSSE(mailboxAddress: string, token: string, onDone?: () => voi
       if (msg.type === "batch") {
         idleCallback(() => {
           (async () => {
-            await writeBatch(msg.emails);
+            await writeBatch(msg.emails, msg.bodies);
             if (msg.cursor) {
               await setSyncState(
                 `backfillCursor_${mailboxAddress}`,

@@ -63,25 +63,34 @@ function hasAttachmentParts(structure: any): boolean {
   return false;
 }
 
-function messageToMetadata(msg: any, mailboxAddress: string): EmailMetadata {
+type FetchedEmail = { meta: EmailMetadata; bodyText: string };
+
+function messageToFetchedEmail(msg: any, mailboxAddress: string): FetchedEmail {
   const env = msg.envelope ?? {};
   const from = env.from?.[0] ?? {};
-  return {
-    id: `${mailboxAddress}:${msg.uid}`,
-    mailboxId: mailboxAddress,
-    uid: msg.uid,
-    threadId: String(msg.gmailThreadId ?? ""),
-    subject: env.subject ?? "(No Subject)",
-    fromName: from.name ?? "Unknown",
-    fromAddress: from.address ?? "unknown",
-    date: msg.internalDate ? new Date(msg.internalDate).getTime() : Date.now(),
-    snippet: extractSnippet(typeof msg.bodyPart === "string"
+  const bodyText =
+    typeof msg.bodyPart === "string"
       ? msg.bodyPart
-      : msg.bodyPart?.toString() ?? ""),
-    isRead: msg.flags?.has("\\Seen") ?? false,
-    isStarred: msg.flags?.has("\\Flagged") ?? false,
-    labels: Array.isArray(msg.gmailLabels) ? [...msg.gmailLabels] : [],
-    hasAttachments: hasAttachmentParts(msg.bodyStructure),
+      : msg.bodyPart?.toString() ?? "";
+  return {
+    meta: {
+      id: `${mailboxAddress}:${msg.uid}`,
+      mailboxId: mailboxAddress,
+      uid: msg.uid,
+      threadId: String(msg.gmailThreadId ?? ""),
+      subject: env.subject ?? "(No Subject)",
+      fromName: from.name ?? "Unknown",
+      fromAddress: from.address ?? "unknown",
+      date: msg.internalDate
+        ? new Date(msg.internalDate).getTime()
+        : Date.now(),
+      snippet: extractSnippet(bodyText),
+      isRead: msg.flags?.has("\\Seen") ?? false,
+      isStarred: msg.flags?.has("\\Flagged") ?? false,
+      labels: Array.isArray(msg.gmailLabels) ? [...msg.gmailLabels] : [],
+      hasAttachments: hasAttachmentParts(msg.bodyStructure),
+    },
+    bodyText,
   };
 }
 
@@ -89,22 +98,26 @@ async function fetchUidRange(
   client: ImapFlow,
   mailboxAddress: string,
   uidSet: string, // e.g. "1:500" or "1234:*"
-): Promise<EmailMetadata[]> {
-  const results: EmailMetadata[] = [];
-  for await (const msg of client.fetch(uidSet, {
-    uid: true,
-    envelope: true,
-    flags: true,
-    bodyStructure: true,
-    internalDate: true,
-    bodyPart: "TEXT",
-    // Gmail extensions — silently ignored for non-Gmail
-    // @ts-ignore
-    "X-GM-THRID": true,
-    // @ts-ignore
-    "X-GM-LABELS": true,
-  }, { uid: true })) {
-    results.push(messageToMetadata(msg, mailboxAddress));
+): Promise<FetchedEmail[]> {
+  const results: FetchedEmail[] = [];
+  for await (const msg of client.fetch(
+    uidSet,
+    {
+      uid: true,
+      envelope: true,
+      flags: true,
+      bodyStructure: true,
+      internalDate: true,
+      bodyPart: "TEXT",
+      // Gmail extensions — silently ignored for non-Gmail
+      // @ts-ignore
+      "X-GM-THRID": true,
+      // @ts-ignore
+      "X-GM-LABELS": true,
+    },
+    { uid: true },
+  )) {
+    results.push(messageToFetchedEmail(msg, mailboxAddress));
   }
   return results;
 }
@@ -202,12 +215,12 @@ async function initIdle(
     // Fetch new messages since watermark
     const lock2 = await client.getMailboxLock("INBOX");
     try {
-      const emails = await fetchUidRange(client, mailboxAddress, `${conn.watermarkUid + 1}:*`);
-      for (const e of emails) {
-        conn.seqToUid.push(e.uid);
-        if (e.uid > conn.watermarkUid) conn.watermarkUid = e.uid;
+      const fetched = await fetchUidRange(client, mailboxAddress, `${conn.watermarkUid + 1}:*`);
+      for (const f of fetched) {
+        conn.seqToUid.push(f.meta.uid);
+        if (f.meta.uid > conn.watermarkUid) conn.watermarkUid = f.meta.uid;
       }
-      if (emails.length) broadcast({ type: "exists", emails });
+      if (fetched.length) broadcast({ type: "exists", emails: fetched.map(f => f.meta) });
     } finally { lock2.release(); }
   });
 
@@ -329,8 +342,12 @@ const app = new Elysia()
               const batch = initialUids.slice(i, i + 50);
               if (!batch.length) break;
               const uidSet = `${batch[batch.length - 1]}:${batch[0]}`;
-              const emails = await fetchUidRange(client, mailboxAddress, uidSet);
-              send({ type: "batch", emails });
+              const fetched = await fetchUidRange(client, mailboxAddress, uidSet);
+              send({
+                type: "batch",
+                emails: fetched.map(f => f.meta),
+                bodies: fetched.map(f => ({ id: f.meta.id, text: f.bodyText })),
+              });
             }
 
             // Background backfill: remaining history in batches of 200
@@ -342,8 +359,13 @@ const app = new Elysia()
               const batch = remaining.slice(i, i + 200);
               if (!batch.length) break;
               const uidSet = `${batch[batch.length - 1]}:${batch[0]}`;
-              const emails = await fetchUidRange(client, mailboxAddress, uidSet);
-              send({ type: "batch", emails, cursor: batch[batch.length - 1] });
+              const fetched = await fetchUidRange(client, mailboxAddress, uidSet);
+              send({
+                type: "batch",
+                emails: fetched.map(f => f.meta),
+                bodies: fetched.map(f => ({ id: f.meta.id, text: f.bodyText })),
+                cursor: batch[batch.length - 1],
+              });
               // Yield to event loop between backfill batches
               await new Promise(r => setTimeout(r, 0));
             }
@@ -520,7 +542,7 @@ const app = new Elysia()
       try {
         const uids = await client.search({ text: q }, { uid: true });
         const emails = uids.length
-          ? await fetchUidRange(client, mailboxAddress, uids.join(","))
+          ? (await fetchUidRange(client, mailboxAddress, uids.join(","))).map(f => f.meta)
           : [];
         return Response.json({ emails });
       } finally {

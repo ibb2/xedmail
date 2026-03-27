@@ -5,7 +5,7 @@ import { db } from "@/lib/dexie";
 type IndexedEmail = Pick<
   EmailMetadata,
   "id" | "subject" | "fromName" | "fromAddress" | "snippet"
->;
+> & { bodyText?: string };
 
 let index: InstanceType<typeof Document<IndexedEmail>> | null = null;
 let addedSinceSnapshot = 0;
@@ -21,6 +21,7 @@ function getIndex() {
           { field: "fromName", tokenize: "forward" },
           { field: "fromAddress", tokenize: "forward" },
           { field: "snippet", tokenize: "forward" },
+          { field: "bodyText", tokenize: "forward" },
         ],
       },
       cache: true,
@@ -37,7 +38,10 @@ export async function rehydrateIndex(): Promise<void> {
   }
 }
 
-export async function addToIndex(emails: EmailMetadata[]): Promise<void> {
+export async function addToIndex(
+  emails: EmailMetadata[],
+  bodyTexts?: Map<string, string>,
+): Promise<void> {
   const idx = getIndex();
   for (const e of emails) {
     idx.add({
@@ -46,6 +50,7 @@ export async function addToIndex(emails: EmailMetadata[]): Promise<void> {
       fromName: e.fromName,
       fromAddress: e.fromAddress,
       snippet: e.snippet,
+      bodyText: bodyTexts?.get(e.id),
     });
   }
   addedSinceSnapshot += emails.length;
