@@ -244,7 +244,7 @@ async function validateSession(token: string | undefined): Promise<{ userId: str
     .where(eq(sessionTable.token, token))
     .limit(1);
   const row = rows[0];
-  if (!row || row.expiresAt < new Date()) return null;
+  if (!row || new Date(row.expiresAt) < new Date()) return null;
   return { userId: row.userId };
 }
 

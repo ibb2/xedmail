@@ -4,8 +4,8 @@ import { sqliteTable, text, integer, unique } from "drizzle-orm/sqlite-core";
 export const sessionTable = sqliteTable("session", {
   id:        text("id").primaryKey(),
   token:     text("token").notNull(),
-  userId:    text("user_id").notNull(),
-  expiresAt: integer("expires_at", { mode: "timestamp" }).notNull(),
+  userId:    text("userId").notNull(),
+  expiresAt: text("expiresAt").notNull(),
 });
 
 // Partial read-only projection — only columns needed by the Elysia IMAP daemon.
