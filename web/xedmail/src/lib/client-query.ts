@@ -56,9 +56,10 @@ export function parseQueryIntent(query: string): QueryIntent {
     return { type: "date", date: yesterday };
   }
 
-  const fromMatch = /\bfrom\s+([\w.+-]+@[\w.-]+\.[A-Za-z]{2,})/.exec(query);
+  // Handles: "from:john", "from:john@x.com", "from john@x.com"
+  const fromMatch = /\bfrom[:\s]+(\S+)/.exec(normalized);
   if (fromMatch?.[1]) {
-    return { type: "from", address: fromMatch[1].toLowerCase() };
+    return { type: "from", address: fromMatch[1] };
   }
 
   return { type: "keyword", text: normalized };
