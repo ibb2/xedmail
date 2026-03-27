@@ -9,6 +9,7 @@ import React, { useMemo, useState } from "react";
 import { SmartSearchBar } from "@/components/ui/smart-search-bar";
 import { db } from "@/lib/dexie";
 import type { EmailMetadata } from "@/lib/dexie";
+import { decompress } from "@/lib/body-cache";
 
 type Email = EmailMetadata & { body?: string };
 
@@ -606,6 +607,16 @@ export default function InboxClient({
   };
 
   const fetchBody = async (email: Email) => {
+    // Check Dexie cache first (populated during backfill)
+    const cached = await db.bodies.get(email.id);
+    if (cached) {
+      await db.bodies.update(email.id, { lastAccessed: Date.now() });
+      const text = await decompress(cached.compressedData);
+      setBody(text);
+      return text;
+    }
+
+    // Cache miss — fall back to IMAP via API
     const response = await fetch(
       `/api/mail/emails/${email.uid}?mailbox=${encodeURIComponent(email.mailboxId)}`,
       {},
