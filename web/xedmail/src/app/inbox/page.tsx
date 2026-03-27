@@ -5,6 +5,7 @@ import { useSearchParams } from "next/navigation";
 import InboxClient from "@/components/inbox/inbox-client";
 import { useAllInboxEmails } from "@/hooks/use-inbox";
 import { searchIndex } from "@/lib/search-index";
+import { parseQueryIntent, filterByIntent } from "@/lib/client-query";
 import { useSyncReady } from "@/providers/sync-provider";
 
 function InboxPage() {
@@ -15,11 +16,19 @@ function InboxPage() {
 
   const filteredEmails = useMemo(() => {
     if (!query) return emails;
+
+    const intent = parseQueryIntent(query);
+
+    // Structured filters (unread, read, today, yesterday, from:x) — apply directly
+    if (intent.type !== "keyword" && intent.type !== "all") {
+      return filterByIntent(emails, intent);
+    }
+
+    // Keyword: try FlexSearch first, fall back to substring filter
     const matchedIds = new Set(searchIndex(query));
     if (matchedIds.size > 0) return emails.filter(e => matchedIds.has(e.id));
 
-    // Fallback: server search handled in InboxClient via /api/mail/search
-    return emails;
+    return filterByIntent(emails, intent);
   }, [emails, query]);
 
   return (

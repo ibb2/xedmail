@@ -4,7 +4,7 @@
  * without needing imapflow types or server-side NLP.
  */
 
-import type { EmailDto } from "@/lib/mail-types";
+import type { EmailMetadata } from "@/lib/dexie";
 
 export type QueryIntent =
   | { type: "all" }
@@ -65,9 +65,9 @@ export function parseQueryIntent(query: string): QueryIntent {
 }
 
 export function filterByIntent(
-  messages: EmailDto[],
+  messages: EmailMetadata[],
   intent: QueryIntent,
-): EmailDto[] {
+): EmailMetadata[] {
   switch (intent.type) {
     case "all":
       return messages;
@@ -85,16 +85,16 @@ export function filterByIntent(
     case "from":
       return messages.filter(
         (m) =>
-          (m.from[1] ?? "").toLowerCase().includes(intent.address) ||
-          (m.from[0] ?? "").toLowerCase().includes(intent.address),
+          m.fromAddress.toLowerCase().includes(intent.address) ||
+          m.fromName.toLowerCase().includes(intent.address),
       );
 
     case "keyword":
       return messages.filter(
         (m) =>
           m.subject.toLowerCase().includes(intent.text) ||
-          (m.from[0] ?? "").toLowerCase().includes(intent.text) ||
-          (m.from[1] ?? "").toLowerCase().includes(intent.text),
+          m.fromName.toLowerCase().includes(intent.text) ||
+          m.fromAddress.toLowerCase().includes(intent.text),
       );
   }
 }
