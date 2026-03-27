@@ -16,7 +16,7 @@ export async function GET(request: Request) {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ query: q }),
-      signal: AbortSignal.timeout(3000),
+      signal: AbortSignal.timeout(500),
       cache: "no-store",
     });
     if (!res.ok) throw new Error(`parser ${res.status}`);
