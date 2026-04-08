@@ -2,7 +2,8 @@
 import { NextRequest, NextResponse } from "next/server";
 
 const PUBLIC_PREFIXES = ["/login", "/api/auth", "/_next/"];
-const STATIC_EXT = /\.(html?|css|js|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest|json)$/;
+const STATIC_EXT =
+  /\.(html?|css|js|jpe?g|webp|png|gif|svg|ttf|woff2?|ico|csv|docx?|xlsx?|zip|webmanifest|json)$/;
 
 function isPublic(pathname: string): boolean {
   if (STATIC_EXT.test(pathname)) return true;
@@ -18,7 +19,7 @@ export function proxy(request: NextRequest) {
 
   if (isPublic(pathname)) return NextResponse.next();
 
-  // Importing the full `auth` instance (jazzPlugin + kysely-libsql) is not
+  // Importing the full `auth` instance (kysely-libsql) is not
   // Edge-compatible and throws "invalid tag". Check the session cookie instead —
   // full validation still happens in API routes via api-auth.ts (Node.js runtime).
   const sessionToken = request.cookies.get("better-auth.session_token");

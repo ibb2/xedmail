@@ -53,7 +53,10 @@ export default function LoginPage() {
     setError(null);
     setLoading(true);
     try {
-      const res = await authClient.signIn.social({ provider: "google", callbackURL: "/" });
+      const res = await authClient.signIn.social({
+        provider: "google",
+        callbackURL: "/",
+      });
       if (res?.error) setError(res.error.message ?? "Google sign-in failed");
     } catch {
       setError("Google sign-in failed");
@@ -74,14 +77,20 @@ export default function LoginPage() {
           password,
           callbackURL: "/",
         });
-        if (res.error) { setError(res.error.message ?? "Sign up failed"); return; }
+        if (res.error) {
+          setError(res.error.message ?? "Sign up failed");
+          return;
+        }
       } else {
         const res = await authClient.signIn.email({
           email,
           password,
           callbackURL: "/",
         });
-        if (res.error) { setError(res.error.message ?? "Sign in failed"); return; }
+        if (res.error) {
+          setError(res.error.message ?? "Sign in failed");
+          return;
+        }
       }
       router.push("/");
     } finally {
@@ -99,7 +108,10 @@ export default function LoginPage() {
         email,
         callbackURL: "/",
       });
-      if (res?.error) { setError(res.error.message ?? "Failed to send link"); return; }
+      if (res?.error) {
+        setError(res.error.message ?? "Failed to send link");
+        return;
+      }
       setMagicSent(true);
     } finally {
       setLoading(false);
@@ -146,14 +158,36 @@ export default function LoginPage() {
           <p style={{ color: "#FFB77B", fontSize: 13, margin: 0 }}>{error}</p>
         )}
 
-        <button type="button" onClick={handleGoogle} style={{ ...submitStyle, background: "#2C2B2B", border: "1px solid rgba(82,68,57,0.4)", color: "#E5E2E1", fontWeight: 400 }}>
+        <button
+          type="button"
+          onClick={handleGoogle}
+          style={{
+            ...submitStyle,
+            background: "#2C2B2B",
+            border: "1px solid rgba(82,68,57,0.4)",
+            color: "#E5E2E1",
+            fontWeight: 400,
+          }}
+        >
           Continue with Google
         </button>
 
-        <div style={{ display: "flex", alignItems: "center", gap: 10, color: "rgba(216,195,180,0.4)", fontSize: 12 }}>
-          <div style={{ flex: 1, height: 1, background: "rgba(82,68,57,0.3)" }} />
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: 10,
+            color: "rgba(216,195,180,0.4)",
+            fontSize: 12,
+          }}
+        >
+          <div
+            style={{ flex: 1, height: 1, background: "rgba(82,68,57,0.3)" }}
+          />
           or
-          <div style={{ flex: 1, height: 1, background: "rgba(82,68,57,0.3)" }} />
+          <div
+            style={{ flex: 1, height: 1, background: "rgba(82,68,57,0.3)" }}
+          />
         </div>
 
         <div style={{ display: "flex", gap: 6 }}>
@@ -166,26 +200,58 @@ export default function LoginPage() {
                 flex: 1,
                 padding: "6px 0",
                 borderRadius: "0.5rem",
-                background: mode === m ? "rgba(255,183,123,0.12)" : "transparent",
-                border: mode === m ? "1px solid rgba(255,183,123,0.3)" : "1px solid rgba(82,68,57,0.3)",
+                background:
+                  mode === m ? "rgba(255,183,123,0.12)" : "transparent",
+                border:
+                  mode === m
+                    ? "1px solid rgba(255,183,123,0.3)"
+                    : "1px solid rgba(82,68,57,0.3)",
                 color: mode === m ? "#FFB77B" : "rgba(216,195,180,0.5)",
                 fontSize: 11,
                 cursor: "pointer",
                 fontFamily: "'Inter', sans-serif",
               }}
             >
-              {m === "signin" ? "Sign in" : m === "signup" ? "Sign up" : "Magic link"}
+              {m === "signin"
+                ? "Sign in"
+                : m === "signup"
+                  ? "Sign up"
+                  : "Magic link"}
             </button>
           ))}
         </div>
 
         {(mode === "signin" || mode === "signup") && (
-          <form onSubmit={handleEmailPassword} style={{ display: "flex", flexDirection: "column", gap: 10 }}>
+          <form
+            onSubmit={handleEmailPassword}
+            style={{ display: "flex", flexDirection: "column", gap: 10 }}
+          >
             {mode === "signup" && (
-              <input type="text" placeholder="Name" value={name} onChange={(e) => setName(e.target.value)} required style={inputStyle} />
+              <input
+                type="text"
+                placeholder="Name"
+                value={name}
+                onChange={(e) => setName(e.target.value)}
+                required
+                style={inputStyle}
+              />
             )}
-            <input type="email" placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} required style={inputStyle} />
-            <input type="password" placeholder="Password" value={password} onChange={(e) => setPassword(e.target.value)} required style={inputStyle} />
+            <input
+              type="email"
+              placeholder="Email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+              style={inputStyle}
+            />
+            <input
+              type="password"
+              placeholder="Password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+              style={inputStyle}
+            />
             <button type="submit" disabled={loading} style={submitStyle}>
               {loading ? "…" : mode === "signup" ? "Create account" : "Sign in"}
             </button>
@@ -193,8 +259,18 @@ export default function LoginPage() {
         )}
 
         {mode === "magic" && !magicSent && (
-          <form onSubmit={handleMagicLink} style={{ display: "flex", flexDirection: "column", gap: 10 }}>
-            <input type="email" placeholder="Email" value={email} onChange={(e) => setEmail(e.target.value)} required style={inputStyle} />
+          <form
+            onSubmit={handleMagicLink}
+            style={{ display: "flex", flexDirection: "column", gap: 10 }}
+          >
+            <input
+              type="email"
+              placeholder="Email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+              style={inputStyle}
+            />
             <button type="submit" disabled={loading} style={submitStyle}>
               {loading ? "…" : "Email me a sign-in link"}
             </button>
@@ -202,7 +278,14 @@ export default function LoginPage() {
         )}
 
         {magicSent && (
-          <p style={{ color: "rgba(216,195,180,0.7)", fontSize: 14, textAlign: "center", margin: 0 }}>
+          <p
+            style={{
+              color: "rgba(216,195,180,0.7)",
+              fontSize: 14,
+              textAlign: "center",
+              margin: 0,
+            }}
+          >
             Check your email — a sign-in link is on the way.
           </p>
         )}

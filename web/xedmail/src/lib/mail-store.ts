@@ -1,7 +1,12 @@
 import { randomUUID } from "crypto";
 import type { InValue, Row } from "@libsql/client";
 import { ensureDatabaseSchema, getDbClient } from "@/lib/db";
-import type { MailboxDto, MailboxRecord, OAuthState, Provider } from "@/lib/mail-types";
+import type {
+  MailboxDto,
+  MailboxRecord,
+  OAuthState,
+  Provider,
+} from "@/lib/mail-types";
 
 type TokenPayload = {
   accessToken: string;
@@ -61,7 +66,9 @@ export async function createOAuthState(
   return { state, userId, provider, createdAt };
 }
 
-export async function consumeOAuthState(state: string): Promise<OAuthState | null> {
+export async function consumeOAuthState(
+  state: string,
+): Promise<OAuthState | null> {
   await ensureDatabaseSchema();
   const db = getDbClient();
   const tx = await db.transaction("write");
@@ -162,7 +169,9 @@ export async function upsertMailbox(
   });
 }
 
-export async function getUserMailboxes(userId: string): Promise<MailboxRecord[]> {
+export async function getUserMailboxes(
+  userId: string,
+): Promise<MailboxRecord[]> {
   await ensureDatabaseSchema();
   const db = getDbClient();
 
@@ -290,9 +299,15 @@ export async function insertScheduledEmail(opts: {
       VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 0, 0)
     `,
     args: [
-      opts.id, opts.userId, opts.mailboxAddress, opts.toAddress,
-      opts.subject, opts.body,
-      opts.inReplyTo ?? null, opts.references ?? null, opts.sendAt,
+      opts.id,
+      opts.userId,
+      opts.mailboxAddress,
+      opts.toAddress,
+      opts.subject,
+      opts.body,
+      opts.inReplyTo ?? null,
+      opts.references ?? null,
+      opts.sendAt,
     ],
   });
 }
@@ -309,7 +324,9 @@ export async function getUnsentScheduledEmailsForUser(
   return result.rows.map(rowToScheduledEmail);
 }
 
-export async function resetStuckScheduledEmails(beforeMs: number): Promise<void> {
+export async function resetStuckScheduledEmails(
+  beforeMs: number,
+): Promise<void> {
   await ensureDatabaseSchema();
   const db = getDbClient();
   await db.execute({

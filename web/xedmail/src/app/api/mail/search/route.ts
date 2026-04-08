@@ -1,60 +1,46 @@
 import { NextResponse } from "next/server";
 import { requireUserId } from "@/lib/api-auth";
-import { getFolders, getLatestInboxMessages, searchInboxMessages } from "@/lib/imap";
 import { getValidMailboxesForUser } from "@/lib/mail-auth";
-import { buildSearchObject } from "@/lib/mail-query";
-import type { EmailDto, FolderDto } from "@/lib/mail-types";
 
 export const runtime = "nodejs";
 
-const MESSAGE_LIMIT = 20;
+const ELYSIA_URL = process.env.ELYSIA_SERVICE_URL!;
+const SERVICE_SECRET = process.env.ELYSIA_SERVICE_SECRET!;
+
+if (!ELYSIA_URL) throw new Error("ELYSIA_SERVICE_URL is not set");
+if (!SERVICE_SECRET) throw new Error("ELYSIA_SERVICE_SECRET is not set");
 
 export async function GET(request: Request) {
-  const { searchParams } = new URL(request.url);
-  const query = searchParams.get("query") ?? "";
-  const includeFolders = searchParams.get("includeFolders") !== "false";
-
   try {
     const userId = await requireUserId();
+    const { searchParams } = new URL(request.url);
+    const q = searchParams.get("q") ?? "";
+    const mailboxParam = searchParams.get("mailbox");
+
     const mailboxes = await getValidMailboxesForUser(userId);
-    const searchObject = query.trim()
-      ? await buildSearchObject(query)
-      : null;
+    const targets = mailboxParam
+      ? mailboxes.filter(m => m.mailbox.emailAddress === mailboxParam)
+      : mailboxes;
 
-    const emailResults: EmailDto[] = [];
-    const folders: FolderDto[] = [];
+    const allEmails = await Promise.all(targets.map(async (m) => {
+      try {
+        const res = await fetch(
+          `${ELYSIA_URL}/search?mailbox=${encodeURIComponent(m.mailbox.emailAddress)}&q=${encodeURIComponent(q)}`,
+          { headers: { "x-service-secret": SERVICE_SECRET }, cache: "no-store" }
+        );
+        if (!res.ok) return [];
+        const data = await res.json();
+        return data.emails ?? [];
+      } catch {
+        return [];
+      }
+    }));
 
-    for (const mailbox of mailboxes) {
-      const auth = {
-        email: mailbox.mailbox.emailAddress,
-        accessToken: mailbox.accessToken,
-      };
-
-      const [emails, mailboxFolders] = await Promise.all([
-        searchObject
-          ? searchInboxMessages(auth, searchObject, MESSAGE_LIMIT)
-          : getLatestInboxMessages(auth, MESSAGE_LIMIT),
-        includeFolders ? getFolders(auth) : Promise.resolve([]),
-      ]);
-
-      emailResults.push(...emails);
-      folders.push(...mailboxFolders);
-    }
-
-    emailResults.sort((a, b) => Date.parse(b.date) - Date.parse(a.date));
-
-    return NextResponse.json({
-      emails: emailResults.slice(0, MESSAGE_LIMIT),
-      folders,
-    });
+    return NextResponse.json({ emails: allEmails.flat() });
   } catch (error) {
     if (error instanceof Error && error.message === "UNAUTHORIZED") {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
-
-    return NextResponse.json(
-      { error: "Failed to fetch messages" },
-      { status: 500 },
-    );
+    return NextResponse.json({ error: "Search failed" }, { status: 500 });
   }
 }

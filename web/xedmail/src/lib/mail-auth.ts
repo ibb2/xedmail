@@ -11,7 +11,9 @@ type MailboxAccess = {
   accessToken: string;
 };
 
-async function ensureValidMailboxToken(mailbox: MailboxRecord): Promise<MailboxAccess> {
+async function ensureValidMailboxToken(
+  mailbox: MailboxRecord,
+): Promise<MailboxAccess> {
   const { accessToken, refreshToken } = mailbox;
   const isExpired =
     typeof mailbox.accessTokenExpiresAt === "number" &&

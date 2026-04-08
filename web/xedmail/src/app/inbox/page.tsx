@@ -1,260 +1,150 @@
 "use client";
-import { useSession } from "@/lib/auth-client";
+
+import React, { Suspense, useEffect, useMemo, useRef, useState } from "react";
 import { useSearchParams } from "next/navigation";
-import React from "react";
 import InboxClient from "@/components/inbox/inbox-client";
-import { filterByIntent, parseQueryIntent } from "@/lib/client-query";
-import { useJazzInboxState } from "@/providers/jazz-provider";
+import { useAllInboxEmails } from "@/hooks/use-inbox";
+import { searchIndex } from "@/lib/search-index";
+import { parseQueryIntent, filterByIntent } from "@/lib/client-query";
+import { useSyncReady, useSyncState } from "@/providers/sync-provider";
+import type { EmailMetadata } from "@/lib/dexie";
+import type { QueryIntent } from "@/lib/client-query";
 
-const POLL_INTERVAL_MS = 30000;
-const SPARSE_THRESHOLD = 5;
+type ParseResponse = {
+  intent: string | null;
+  filters: {
+    status?: string;
+    from?: string;
+    date?: string;
+  };
+};
 
-export default function Inbox() {
-  const { data: _session } = useSession();
-  const {
-    isLoaded: isJazzLoaded,
-    messages,
-    folders,
-    mailboxes,
-    syncInbox,
-    syncScheduledEmails,
-    snoozeMessage,
-  } = useJazzInboxState();
+function parseResponseToIntent(query: string, data: ParseResponse): QueryIntent | null {
+  const f = data.filters ?? {};
+  if (f.status === "unread") return { type: "status", seen: false };
+  if (f.status === "read") return { type: "status", seen: true };
+  if (f.from) return { type: "from", address: f.from.toLowerCase() };
+  if (f.date) {
+    const d = f.date.toLowerCase();
+    const now = new Date();
+    const today = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
+    if (d.includes("today")) return { type: "date", date: today };
+    if (d.includes("yesterday")) {
+      const yesterday = new Date(today);
+      yesterday.setUTCDate(yesterday.getUTCDate() - 1);
+      return { type: "date", date: yesterday };
+    }
+  }
+  return null; // no structure extracted
+}
+
+function InboxPage() {
+  const syncReady = useSyncReady();
+  const { isSyncing } = useSyncState();
+  const emails = useAllInboxEmails();
   const searchParams = useSearchParams();
   const query = searchParams.get("query")?.trim() ?? "";
-  const isFetchingRef = React.useRef(false);
-  const requestIdRef = React.useRef(0);
-  const abortControllerRef = React.useRef<AbortController | null>(null);
-  const hasFetchedFoldersRef = React.useRef(false);
-  const foldersRef = React.useRef(folders);
-  const mailboxesRef = React.useRef(mailboxes);
-  const [isLoading, setIsLoading] = React.useState(true);
-  const [serverMatchedKeys, setServerMatchedKeys] = React.useState<
-    Set<string>
-  >(new Set());
 
-  React.useEffect(() => {
-    foldersRef.current = folders;
-  }, [folders]);
+  // Regex parse — synchronous, instant. Handles well-defined structured
+  // patterns (unread, from:x, today, yesterday). Returns "keyword" for
+  // anything it can't classify structurally.
+  const regexIntent = useMemo(() => parseQueryIntent(query), [query]);
 
-  React.useEffect(() => {
-    mailboxesRef.current = mailboxes;
-  }, [mailboxes]);
+  // Structured queries resolved entirely from Dexie — no network call.
+  // Keyword queries fall through to the async path below.
+  const localResults = useMemo(() => {
+    if (!query) return emails;
 
-  const messagesRef = React.useRef(messages);
-  React.useEffect(() => {
-    messagesRef.current = messages;
-  }, [messages]);
-
-  const syncInboxRef = React.useRef(syncInbox);
-  React.useEffect(() => {
-    syncInboxRef.current = syncInbox;
-  }, [syncInbox]);
-
-  const syncScheduledEmailsRef = React.useRef(syncScheduledEmails);
-  React.useEffect(() => {
-    syncScheduledEmailsRef.current = syncScheduledEmails;
-  }, [syncScheduledEmails]);
-
-  const snoozeMessageRef = React.useRef(snoozeMessage);
-  React.useEffect(() => {
-    snoozeMessageRef.current = snoozeMessage;
-  }, [snoozeMessage]);
-
-  const resurfaceSnoozedMessages = React.useCallback(() => {
-    const now = new Date();
-    for (const msg of messagesRef.current) {
-      if (msg.snoozedUntil && new Date(msg.snoozedUntil) <= now) {
-        snoozeMessageRef.current(
-          { uid: msg.uid, mailboxAddress: msg.mailboxAddress },
-          undefined,
-        );
-      }
+    if (regexIntent.type !== "keyword" && regexIntent.type !== "all") {
+      return filterByIntent(emails, regexIntent);
     }
-  }, []);
 
-  // Parse query intent once, used by both local filter and fetch logic
-  const intent = React.useMemo(() => parseQueryIntent(query), [query]);
+    // Keyword: FlexSearch over full indexed body text first
+    const matchedIds = new Set(searchIndex(query));
+    if (matchedIds.size > 0) return emails.filter(e => matchedIds.has(e.id));
 
-  // Filter Jazz-cached messages by parsed intent, plus include any
-  // server-matched keys from previous IMAP searches
-  const localSearchResults = React.useMemo(() => {
-    if (!query) return messages;
-    const intentFiltered = filterByIntent(messages, intent);
-    // For keyword searches, also include server-matched results
-    if (intent.type === "keyword" && serverMatchedKeys.size > 0) {
-      const intentKeys = new Set(
-        intentFiltered.map((m) => `${m.mailboxAddress}:${m.uid}`),
-      );
-      const extra = messages.filter(
-        (m) =>
-          !intentKeys.has(`${m.mailboxAddress}:${m.uid}`) &&
-          serverMatchedKeys.has(`${m.mailboxAddress}:${m.uid}`),
-      );
-      return [...intentFiltered, ...extra];
-    }
-    return intentFiltered;
-  }, [messages, query, intent, serverMatchedKeys]);
+    // Substring scan of cached metadata (subject / from name / address)
+    return filterByIntent(emails, regexIntent);
+  }, [emails, query, regexIntent]);
 
-  const localSearchResultsRef = React.useRef(localSearchResults);
-  React.useEffect(() => {
-    localSearchResultsRef.current = localSearchResults;
-  }, [localSearchResults]);
+  // FastAPI NLP — only called for keyword queries. Tries to extract structure
+  // that regex can't detect ("emails from my boss last week", "unread about
+  // the budget"). If FastAPI finds structure, re-filters Dexie with it.
+  // Falls back to IMAP if no local hits remain.
+  const [serverResults, setServerResults] = useState<EmailMetadata[] | null>(null);
+  const [isServerSearching, setIsServerSearching] = useState(false);
+  const debounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  // Show cached Jazz messages immediately once Jazz has loaded
-  React.useEffect(() => {
-    if (isJazzLoaded && messages.length > 0) {
-      setIsLoading(false);
-    }
-  }, [isJazzLoaded, messages.length]);
+  useEffect(() => {
+    setServerResults(null);
+    setIsServerSearching(false);
+    if (debounceRef.current) clearTimeout(debounceRef.current);
 
-  const getAllEmails = React.useCallback(
-    async (includeFolders: boolean) => {
-      if (isFetchingRef.current) return;
-      isFetchingRef.current = true;
-      const requestId = ++requestIdRef.current;
-      const abortController = new AbortController();
-      abortControllerRef.current = abortController;
+    // Only keyword queries go to FastAPI / IMAP
+    if (!query || regexIntent.type !== "keyword") return;
 
-      const hasCachedMessages = messagesRef.current.length > 0;
-      if (!hasCachedMessages) setIsLoading(true);
-
+    debounceRef.current = setTimeout(async () => {
+      // Ask FastAPI if it can extract structure regex missed
       try {
-        if (!hasCachedMessages) {
-          // No cached data — initial full fetch from IMAP
-          const response = await fetch(
-            `/api/mail/search?query=&includeFolders=${includeFolders}`,
-            {
-              cache: "no-store",
-              signal: abortController.signal,
-            },
-          );
-          if (!response.ok || requestIdRef.current !== requestId) return;
-          const payload = await response.json();
-          syncInboxRef.current({
-            messages: payload.emails ?? [],
-            folders:
-              payload.folders ?? (includeFolders ? [] : foldersRef.current),
-            mailboxes: mailboxesRef.current,
-          });
-          if (includeFolders) hasFetchedFoldersRef.current = true;
-        } else {
-          // Has cached data — incremental UID watermark fetch
-          const uniqueMailboxes = [
-            ...new Set(messagesRef.current.map((m) => m.mailboxAddress)),
-          ];
-          for (const mailboxAddress of uniqueMailboxes) {
-            if (requestIdRef.current !== requestId) break;
-            const maxUid = Math.max(
-              0,
-              ...messagesRef.current
-                .filter((m) => m.mailboxAddress === mailboxAddress)
-                .map((m) => parseInt(m.uid, 10))
-                .filter((n) => !Number.isNaN(n)),
-            );
-            const response = await fetch(
-              `/api/mail/new?minUid=${maxUid}&mailbox=${encodeURIComponent(mailboxAddress)}`,
-              {
-                cache: "no-store",
-                signal: abortController.signal,
-              },
-            );
-            if (!response.ok || requestIdRef.current !== requestId) continue;
-            const payload = await response.json();
-            if ((payload.emails ?? []).length > 0) {
-              syncInboxRef.current({
-                messages: payload.emails,
-                folders: [],
-                mailboxes: mailboxesRef.current,
-              });
+        const res = await fetch(`/api/mail/parse?q=${encodeURIComponent(query)}`);
+        if (res.ok) {
+          const data: ParseResponse = await res.json();
+          if (data.intent === "search_emails") {
+            const nlpIntent = parseResponseToIntent(query, data);
+            if (nlpIntent) {
+              const filtered = filterByIntent(emails, nlpIntent);
+              if (filtered.length > 0) {
+                setServerResults(filtered);
+                return;
+              }
             }
           }
         }
-
-        // For keyword searches: if Jazz cache has sparse results,
-        // fall back to IMAP server search
-        if (
-          intent.type === "keyword" &&
-          localSearchResultsRef.current.length < SPARSE_THRESHOLD &&
-          requestIdRef.current === requestId
-        ) {
-          const response = await fetch(
-            `/api/mail/search?query=${encodeURIComponent(query)}&includeFolders=false`,
-            {
-              cache: "no-store",
-              signal: abortController.signal,
-            },
-          );
-          if (response.ok && requestIdRef.current === requestId) {
-            const payload = await response.json();
-            const serverEmails = payload.emails ?? [];
-            if (serverEmails.length > 0) {
-              syncInboxRef.current({
-                messages: serverEmails,
-                folders: [],
-                mailboxes: mailboxesRef.current,
-              });
-              setServerMatchedKeys(
-                new Set(
-                  serverEmails.map(
-                    (e: { mailboxAddress: string; uid: string }) =>
-                      `${e.mailboxAddress}:${e.uid}`,
-                  ),
-                ),
-              );
-            }
-          }
-        }
-
-        // Resurface snoozed emails
-        resurfaceSnoozedMessages();
-
-        // Sync scheduled emails
-        if (requestIdRef.current === requestId) {
-          const scheduledResponse = await fetch("/api/mail/scheduled", {
-            signal: abortController.signal,
-          });
-          if (scheduledResponse.ok && requestIdRef.current === requestId) {
-            const { scheduled } = await scheduledResponse.json();
-            syncScheduledEmailsRef.current(scheduled ?? []);
-          }
-        }
-      } catch (error) {
-        if (error instanceof Error && error.name === "AbortError") return;
-      } finally {
-        if (requestIdRef.current === requestId) {
-          isFetchingRef.current = false;
-          setIsLoading(false);
-        }
+      } catch {
+        // FastAPI unavailable — fall through
       }
-    },
-    [query, intent, resurfaceSnoozedMessages],
-  );
 
-  React.useEffect(() => {
-    if (!isJazzLoaded) return;
+      // Local results exist from FlexSearch / substring — don't hit IMAP
+      if (localResults.length > 0) return;
 
-    setServerMatchedKeys(new Set());
-    abortControllerRef.current?.abort();
-    isFetchingRef.current = false;
-    void getAllEmails(!hasFetchedFoldersRef.current);
-
-    const interval = window.setInterval(() => {
-      void getAllEmails(false);
-    }, POLL_INTERVAL_MS);
+      // Nothing local — IMAP full-text search as last resort
+      setIsServerSearching(true);
+      try {
+        const res = await fetch(`/api/mail/search?q=${encodeURIComponent(query)}`);
+        if (res.ok) {
+          const data = await res.json();
+          setServerResults(data.emails ?? []);
+        }
+      } catch {
+        setServerResults([]);
+      } finally {
+        setIsServerSearching(false);
+      }
+    }, 300);
 
     return () => {
-      window.clearInterval(interval);
-      abortControllerRef.current?.abort();
-      isFetchingRef.current = false;
+      if (debounceRef.current) clearTimeout(debounceRef.current);
     };
-  }, [getAllEmails, query, isJazzLoaded]);
+  }, [query, regexIntent.type, localResults.length, emails]);
+
+  const displayedEmails = serverResults ?? localResults;
 
   return (
     <InboxClient
-      emails={localSearchResults}
-      isLoading={isLoading}
+      emails={displayedEmails}
+      isLoading={!syncReady && emails.length === 0}
+      isServerSearching={isServerSearching}
+      isSyncing={isSyncing}
+      syncedCount={emails.length}
       query={query}
     />
+  );
+}
+
+export default function Inbox() {
+  return (
+    <Suspense>
+      <InboxPage />
+    </Suspense>
   );
 }

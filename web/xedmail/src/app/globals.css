@@ -118,25 +118,25 @@
   }
   body {
     @apply bg-background text-foreground;
-    font-family: 'Inter', sans-serif;
+    font-family: "Inter", sans-serif;
   }
 }
 
 /* Copper & Obsidian Design System tokens */
 :root {
-  --copper-primary: #FFB77B;
-  --copper-primary-container: #C8803F;
-  --copper-on-primary: #4D2700;
+  --copper-primary: #ffb77b;
+  --copper-primary-container: #c8803f;
+  --copper-on-primary: #4d2700;
   --copper-surface: #131313;
-  --copper-surface-container-lowest: #0E0E0E;
-  --copper-surface-container-low: #1C1B1B;
-  --copper-surface-container: #20201F;
-  --copper-surface-container-high: #2A2A2A;
+  --copper-surface-container-lowest: #0e0e0e;
+  --copper-surface-container-low: #1c1b1b;
+  --copper-surface-container: #20201f;
+  --copper-surface-container-high: #2a2a2a;
   --copper-surface-container-highest: #353535;
-  --copper-on-surface: #E5E2E1;
-  --copper-on-surface-variant: #D8C3B4;
+  --copper-on-surface: #e5e2e1;
+  --copper-on-surface-variant: #d8c3b4;
   --copper-outline-variant: #524439;
-  --copper-error: #FFB4AB;
+  --copper-error: #ffb4ab;
 }
 
 /* Thin copper scrollbar */
@@ -158,7 +158,7 @@
 
 /* Material Symbols helper */
 .material-symbols-outlined {
-  font-family: 'Material Symbols Outlined';
+  font-family: "Material Symbols Outlined";
   font-weight: normal;
   font-style: normal;
   font-size: 20px;

@@ -1,10 +1,10 @@
 /**
- * Lightweight client-side query parser for filtering Jazz-cached messages.
- * Mirrors the intent detection in mail-query.ts but runs in the browser
- * without needing imapflow types or server-side NLP.
+ * Client-side query parser and filter utilities.
+ * parseQueryIntent handles well-defined structured patterns instantly (no API).
+ * FastAPI is called separately for natural-language keyword queries.
  */
 
-import type { EmailDto } from "@/lib/mail-types";
+import type { EmailMetadata } from "@/lib/dexie";
 
 export type QueryIntent =
   | { type: "all" }
@@ -22,33 +22,23 @@ const FILLER_WORDS =
 function isAllIntent(query: string): boolean {
   if (!query) return true;
   if (ALL_INTENT_PATTERN.test(query)) return true;
-  const stripped = query.replace(FILLER_WORDS, "").trim();
-  return stripped.length === 0;
+  return query.replace(FILLER_WORDS, "").trim().length === 0;
 }
 
 export function parseQueryIntent(query: string): QueryIntent {
   const normalized = query.trim().toLowerCase();
 
-  if (isAllIntent(normalized)) {
-    return { type: "all" };
-  }
+  if (isAllIntent(normalized)) return { type: "all" };
 
-  if (/\bunread\b/.test(normalized)) {
-    return { type: "status", seen: false };
-  }
+  if (/\bunread\b/.test(normalized)) return { type: "status", seen: false };
 
-  if (/\bread\b/.test(normalized) && !/\bread[yings]/.test(normalized)) {
+  if (/\bread\b/.test(normalized) && !/\bread[yings]/.test(normalized))
     return { type: "status", seen: true };
-  }
 
   const now = new Date();
-  const today = new Date(
-    Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()),
-  );
+  const today = new Date(Date.UTC(now.getUTCFullYear(), now.getUTCMonth(), now.getUTCDate()));
 
-  if (/\btoday\b/.test(normalized)) {
-    return { type: "date", date: today };
-  }
+  if (/\btoday\b/.test(normalized)) return { type: "date", date: today };
 
   if (/\byesterday\b/.test(normalized)) {
     const yesterday = new Date(today);
@@ -56,18 +46,17 @@ export function parseQueryIntent(query: string): QueryIntent {
     return { type: "date", date: yesterday };
   }
 
-  const fromMatch = /\bfrom\s+([\w.+-]+@[\w.-]+\.[A-Za-z]{2,})/.exec(query);
-  if (fromMatch?.[1]) {
-    return { type: "from", address: fromMatch[1].toLowerCase() };
-  }
+  // "from:john", "from:john@x.com", "from john@x.com"
+  const fromMatch = /\bfrom[:\s]+(\S+)/.exec(normalized);
+  if (fromMatch?.[1]) return { type: "from", address: fromMatch[1] };
 
   return { type: "keyword", text: normalized };
 }
 
 export function filterByIntent(
-  messages: EmailDto[],
+  messages: EmailMetadata[],
   intent: QueryIntent,
-): EmailDto[] {
+): EmailMetadata[] {
   switch (intent.type) {
     case "all":
       return messages;
@@ -85,16 +74,16 @@ export function filterByIntent(
     case "from":
       return messages.filter(
         (m) =>
-          (m.from[1] ?? "").toLowerCase().includes(intent.address) ||
-          (m.from[0] ?? "").toLowerCase().includes(intent.address),
+          m.fromAddress.toLowerCase().includes(intent.address) ||
+          m.fromName.toLowerCase().includes(intent.address),
       );
 
     case "keyword":
       return messages.filter(
         (m) =>
           m.subject.toLowerCase().includes(intent.text) ||
-          (m.from[0] ?? "").toLowerCase().includes(intent.text) ||
-          (m.from[1] ?? "").toLowerCase().includes(intent.text),
+          m.fromName.toLowerCase().includes(intent.text) ||
+          m.fromAddress.toLowerCase().includes(intent.text),
       );
   }
 }
